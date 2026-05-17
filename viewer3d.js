@@ -1528,11 +1528,14 @@ async function loadSplatBackground() {
   if (wrap) wrap.style.display = 'flex';
   if (msg)  msg.textContent = `Loading ${ext}… 0%`;
 
+  // Hoisted so the point cloud fallback catch-block can reuse the downloaded bytes
+  let rawBuf = null;
+
   try {
     // Pass 1: fetch raw bytes and scan positions for bounding box.
     // Only valid for .splat (32-byte records) — skip pre-scan for .ply to avoid NaN bounds.
     if (msg) msg.textContent = `Scanning ${ext}…`;
-    const rawBuf = ext === 'SPLAT' ? await fetch(splatPath).then(r => r.arrayBuffer()) : null;
+    rawBuf = ext === 'SPLAT' ? await fetch(splatPath).then(r => r.arrayBuffer()) : null;
     const STRIDE = 32;
     let cx = 0, cy = 0, cz = 0, scale = 1;
     if (rawBuf) {
