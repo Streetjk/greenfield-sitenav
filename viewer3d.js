@@ -1555,7 +1555,11 @@ async function loadSplatBackground() {
       scale = 40 / span;
     }
 
-    // Pass 2: load via GS3D for proper Gaussian rendering (uses cached bytes)
+    // Pass 2: GS3D Gaussian rendering — requires cross-origin isolation (COEP/COOP
+    // headers). Skip on static hosts like GitHub Pages where the service worker
+    // may not have activated; fall through to the point cloud fallback instead.
+    if (!window.crossOriginIsolated) throw new Error('GS3D requires cross-origin isolation');
+
     if (msg) msg.textContent = `Loading ${ext}… 0%`;
     const GS3D = await import('@mkkellogg/gaussian-splats-3d');
     const sv = new GS3D.Viewer({
@@ -1568,20 +1572,17 @@ async function loadSplatBackground() {
       splatAlphaRemovalThreshold: 1,
     });
 
-    // Race addSplatScene against a 20 s timeout — on static hosts (GitHub Pages)
-    // the GS3D worker can hang at ~99% without resolving or rejecting.
     await Promise.race([
       sv.addSplatScene(splatPath, {
         showLoadingUI: false,
         onProgress: (p) => {
-          // GS3D v0.4.7 passes p as 0–100, not 0–1
           const pct = Math.min(99, Math.round(p));
           if (bar) bar.style.width = pct + '%';
           if (msg) msg.textContent = `Loading ${ext}… ${pct}%`;
         },
       }),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('GS3D timeout')), 20000)
+        setTimeout(() => reject(new Error('GS3D timeout')), 15000)
       ),
     ]);
 
@@ -1648,27 +1649,16 @@ async function loadSplatBackground() {
   }
 
   try {
-    const res = await fetch(splatPath);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (msg) msg.textContent = `Loading ${ext} (point cloud)…`;
 
-    // Stream with progress
-    const total  = parseInt(res.headers.get('content-length') || '0', 10);
-    const reader = res.body.getReader();
-    const chunks = [];
-    let loaded = 0;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      loaded += value.byteLength;
-      if (total && bar) bar.style.width = Math.round(loaded / total * 100) + '%';
-      if (total && msg) msg.textContent = `Loading ${ext}… ${Math.round(loaded / total * 100)}%`;
+    // Reuse rawBuf from Pass 1 if available; otherwise fetch now
+    let rawBuf2 = rawBuf;
+    if (!rawBuf2) {
+      const res = await fetch(splatPath);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      rawBuf2 = await res.arrayBuffer();
     }
-
-    // Assemble buffer
-    const raw = new Uint8Array(loaded);
-    let offset = 0;
-    for (const c of chunks) { raw.set(c, offset); offset += c.byteLength; }
+    const raw = new Uint8Array(rawBuf2);
 
     // Parse .splat binary: 32 bytes per splat
     // [x f32][y f32][z f32][sx f32][sy f32][sz f32][r u8][g u8][b u8][a u8][q0..3 u8]

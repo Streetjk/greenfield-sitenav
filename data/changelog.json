@@ -1,1 +1,42 @@
-[]
+[
+  {
+    "timestamp": "2026-05-17T09:27:12.237Z",
+    "changedBy": "browser",
+    "action": "delete",
+    "entityType": "point",
+    "entityId": "p1a2b3c4-0002-0000-0000-000000000002",
+    "entityLabel": "Dock 2 – Dispatch"
+  },
+  {
+    "timestamp": "2026-05-17T09:27:14.022Z",
+    "changedBy": "browser",
+    "action": "delete",
+    "entityType": "point",
+    "entityId": "p1a2b3c4-0001-0000-0000-000000000001",
+    "entityLabel": "Dock 1 – Receiving"
+  },
+  {
+    "timestamp": "2026-05-17T09:27:16.258Z",
+    "changedBy": "browser",
+    "action": "delete",
+    "entityType": "point",
+    "entityId": "p1a2b3c4-0003-0000-0000-000000000003",
+    "entityLabel": "Cold Store – Receiving"
+  },
+  {
+    "timestamp": "2026-05-17T11:54:42.478Z",
+    "changedBy": "browser",
+    "action": "save",
+    "entityType": "point",
+    "entityId": "1262e5b3-ef43-401b-a690-1b4c2c47891d",
+    "entityLabel": "New pin"
+  },
+  {
+    "timestamp": "2026-05-17T11:55:20.455Z",
+    "changedBy": "browser",
+    "action": "save",
+    "entityType": "point",
+    "entityId": "1262e5b3-ef43-401b-a690-1b4c2c47891d",
+    "entityLabel": "Parts collection"
+  }
+]
