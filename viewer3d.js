@@ -114,7 +114,7 @@ const _allScaleEls = []; // inner elements for all CSS2D labels — zoom scaling
 let _labelPos     = _debugMode ? JSON.parse(localStorage.getItem(_LS_LABELS) || '{}') : {};
 let _customRoutes = JSON.parse(localStorage.getItem(_LS_ROUTES)  || '[]');
 let _jsonOff      = localStorage.getItem(_LS_JSON_OFF) === '1';
-let _roadWidth    = parseFloat(localStorage.getItem('sn_road_w') || '0.8');
+let _roadWidth    = parseFloat(localStorage.getItem('sn_road_w') || '3');
 
 const _trafficGrp = new THREE.Group();
 scene.add(_trafficGrp);
