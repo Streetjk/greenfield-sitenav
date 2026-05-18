@@ -115,6 +115,7 @@ let _labelPos     = _debugMode ? JSON.parse(localStorage.getItem(_LS_LABELS) || 
 let _customRoutes = JSON.parse(localStorage.getItem(_LS_ROUTES)  || '[]');
 let _jsonOff      = localStorage.getItem(_LS_JSON_OFF) === '1';
 let _roadWidth    = parseFloat(localStorage.getItem('sn_road_w') || '0.3');
+let _allContacts  = [];
 
 const _trafficGrp = new THREE.Group();
 scene.add(_trafficGrp);
@@ -1703,6 +1704,22 @@ async function boot() {
   // Expose API for admin3d.js and dispatch ready event
   window._v3d = { renderer, camera, controls, _raycaster, _pickGround, renderPins, removePin, updatePinHighlight, latlngToScene, pins: _pins };
   window.dispatchEvent(new CustomEvent('viewer3d:ready'));
+
+  // viewer3d.html: load pins/contacts and handle ?id= deep-link
+  if (!document.getElementById('admin-controls')) {
+    const [points, contacts] = await Promise.all([
+      fetch('./data/points.json').then(r => r.json()).catch(() => []),
+      fetch('./data/contacts.json').then(r => r.json()).catch(() => []),
+    ]);
+    _allContacts = contacts;
+    renderPins(points);
+    renderPointList(points);
+    const pinId = new URLSearchParams(location.search).get('id');
+    if (pinId) {
+      const pt = points.find(p => p.id === pinId);
+      if (pt) selectPoint(pt);
+    }
+  }
 
   // Load splat in background — scene is already usable without it
   loadSplatBackground();

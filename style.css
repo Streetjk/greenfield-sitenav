@@ -152,7 +152,7 @@ textarea.form-input      { resize: vertical; min-height: 68px; }
 
   #side-panel {
     width: 100% !important;
-    height: 45vh !important;
+    height: 20vh !important;
     border-left: none !important;
     border-bottom: 1px solid var(--border);
     order: -1;
@@ -160,7 +160,11 @@ textarea.form-input      { resize: vertical; min-height: 68px; }
 
   #canvas-wrap { flex: 1; min-height: 0; }
 
-  #cam-presets { top: auto !important; bottom: 16px; }
+  #cam-presets {
+    top: auto !important;
+    bottom: 16px;
+    flex-direction: row !important;
+  }
 
   #site-brand, #site-address { display: none !important; }
 
