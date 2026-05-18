@@ -377,11 +377,24 @@ window.setCameraPreset = function setCameraPreset(name, duration = 2500) {
   controls.enabled = false;
   _camAnimating = true;
 
-  // World-space lerp: starts exactly at current camera position with no
-  // spherical-coordinate singularity (overhead phi≈0 caused azimuth snaps).
   const startPos  = camera.position.clone();
   const startLook = controls.target.clone();
   const endLook   = preset.look.clone();
+  const startQuat = camera.quaternion.clone();
+
+  // Pre-compute end quaternion with a safe up vector.
+  // lookAt() has a gimbal-lock singularity when looking straight down/up
+  // (look direction ≈ parallel to camera.up). Detect this and temporarily
+  // switch to a side up-vector so the end orientation is well-defined.
+  const lookDir = new THREE.Vector3().subVectors(endLook, preset.pos).normalize();
+  const savedUp = camera.up.clone();
+  if (Math.abs(lookDir.dot(camera.up)) > 0.99) camera.up.set(0, 0, -1);
+  camera.position.copy(preset.pos);
+  camera.lookAt(endLook);
+  const endQuat = camera.quaternion.clone();
+  camera.position.copy(startPos);
+  camera.quaternion.copy(startQuat);
+  camera.up.copy(savedUp);
 
   const prog = { t: 0 };
   _camTween = gsap.to(prog, {
@@ -392,11 +405,12 @@ window.setCameraPreset = function setCameraPreset(name, duration = 2500) {
       const { t } = prog;
       camera.position.lerpVectors(startPos, preset.pos, t);
       controls.target.lerpVectors(startLook, endLook, t);
-      camera.lookAt(controls.target);
+      camera.quaternion.slerpQuaternions(startQuat, endQuat, t);
     },
     onComplete() {
       camera.position.copy(preset.pos);
       controls.target.copy(endLook);
+      camera.up.copy(savedUp);
       controls.update();
       controls.enabled = true;
       _camAnimating = false;
