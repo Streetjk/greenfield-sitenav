@@ -703,9 +703,10 @@
         flex-shrink: 0;
         cursor: pointer;
       }
-      #panel-header { justify-content: center !important; }
-      #panel-header-text { display: none !important; }
-      #panel-toggle { display: block; }
+      #panel-header { justify-content: center !important; position: relative; }
+      #panel-header-text { display: block !important; position: absolute; left: 18px; top: 50%; transform: translateY(-50%); }
+      #panel-header-text .panel-site { display: none !important; }
+      #panel-toggle { display: block; margin-left: 0; }
       #panel-tab { display: none !important; }
       #side-panel.sheet-full #panel-toggle { transform: rotate(180deg); }
 
