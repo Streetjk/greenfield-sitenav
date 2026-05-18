@@ -812,13 +812,13 @@
       Browse locations
     </div>
 
-    <div id="panel-header">
+    <div id="panel-header" onclick="togglePanel()">
       <div id="panel-header-text">
         <div class="panel-site" id="panel-site">Site</div>
         <div class="panel-title" id="panel-title">Locations</div>
       </div>
-      <!-- Mobile toggle chevron -->
-      <button id="panel-toggle" onclick="togglePanel()" aria-label="Collapse panel">
+      <!-- Mobile toggle chevron — visual indicator, stops bubble to avoid double-fire -->
+      <button id="panel-toggle" onclick="event.stopPropagation();togglePanel()" aria-label="Collapse panel">
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
           <path d="M4.5 7L9 11.5L13.5 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
