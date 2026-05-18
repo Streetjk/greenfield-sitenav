@@ -91,6 +91,8 @@ controls.dampingFactor = 0.08;
 controls.minDistance = 3;
 controls.maxDistance = 80;
 controls.maxPolarAngle = THREE.MathUtils.degToRad(85);
+// Stop auto-orbit the moment the user grabs the camera
+controls.addEventListener('start', stopAutoOrbit);
 
 // Initial camera — overhead
 camera.position.set(0.00, 26.60, 0.00);
@@ -123,6 +125,32 @@ scene.add(_trafficGrp);
 let _drawing = false;
 let _camAnimating = false;
 let _camTween = null;
+
+// ── Auto-orbit (slow loop around selected pin) ────────────────────────────
+let _orbitActive = false;
+let _orbitTarget = new THREE.Vector3();
+let _orbitAngle  = 0;    // current azimuth in radians
+let _orbitRadius = 10;
+let _orbitElev   = Math.PI / 4; // 45° elevation
+
+function startAutoOrbit(target, radius, elevDeg) {
+  _orbitTarget.copy(target);
+  _orbitRadius = radius;
+  _orbitElev   = elevDeg * Math.PI / 180;
+  // Preserve current azimuth so camera doesn't jump
+  _orbitAngle  = Math.atan2(
+    camera.position.z - target.z,
+    camera.position.x - target.x
+  );
+  _orbitActive = true;
+}
+
+function stopAutoOrbit() {
+  if (!_orbitActive) return;
+  _orbitActive = false;
+  controls.enabled = true;
+  controls.update();
+}
 let _drawPts = [];
 const _drawGrp = new THREE.Group();
 scene.add(_drawGrp);
@@ -207,7 +235,20 @@ const IDLE_INTERVAL = _Q.idleInterval;
 
 function animate() {
   requestAnimationFrame(animate);
-  if (!_camAnimating) controls.update();
+  if (_orbitActive) {
+    // ~35-second full orbit at 60 fps
+    _orbitAngle += 0.003;
+    const flatR = _orbitRadius * Math.cos(_orbitElev);
+    camera.position.set(
+      _orbitTarget.x + flatR * Math.cos(_orbitAngle),
+      _orbitTarget.y + _orbitRadius * Math.sin(_orbitElev),
+      _orbitTarget.z + flatR * Math.sin(_orbitAngle)
+    );
+    controls.target.copy(_orbitTarget);
+    camera.lookAt(_orbitTarget);
+  } else if (!_camAnimating) {
+    controls.update();
+  }
   if (camera.position.y < 0.5) camera.position.y = 0.5;
 
   const moved = !camera.position.equals(_prevCamPos) ||
@@ -294,7 +335,8 @@ function _applyBranding(cfg) {
   }
 }
 
-window.setCameraPreset = function setCameraPreset(name, duration = 1800) {
+window.setCameraPreset = function setCameraPreset(name, duration = 2500) {
+  stopAutoOrbit();
   let preset = PRESETS[name];
   if (!preset) return;
 
@@ -547,9 +589,72 @@ async function selectPoint(pt) {
     document.getElementById('app')?.classList.add('panel-open');
   }
 
+  // ── Camera: zoom in 10 units at 45° elevation then slow orbit ──────────
+  stopAutoOrbit();
+  if (_camTween) { _camTween.kill(); _camTween = null; }
+
+  const PIN_RADIUS = 10;
+  const PIN_ELEV   = 45; // degrees
+  const elevRad    = PIN_ELEV * Math.PI / 180;
+  const pinPos     = new THREE.Vector3(pt.position3d.x, pt.position3d.y, pt.position3d.z);
+
+  // Preserve current azimuth so camera moves toward the pin, not sideways
+  const fromTarget = new THREE.Vector3(
+    camera.position.x - controls.target.x,
+    0,
+    camera.position.z - controls.target.z
+  );
+  if (fromTarget.length() < 0.001) fromTarget.set(1, 0, 0);
+  fromTarget.normalize();
+
+  const flatR     = PIN_RADIUS * Math.cos(elevRad);
+  const targetPos = new THREE.Vector3(
+    pinPos.x + fromTarget.x * flatR,
+    pinPos.y + PIN_RADIUS * Math.sin(elevRad),
+    pinPos.z + fromTarget.z * flatR
+  );
+
+  controls.enabled = false;
+  _camAnimating = true;
+
+  const startLook = controls.target.clone();
+  const endLook   = pinPos.clone();
+  const startSph  = new THREE.Spherical().setFromVector3(camera.position.clone().sub(startLook));
+  const endSph    = new THREE.Spherical().setFromVector3(targetPos.clone().sub(endLook));
+  let dTheta = endSph.theta - startSph.theta;
+  if (dTheta >  Math.PI) dTheta -= 2 * Math.PI;
+  if (dTheta < -Math.PI) dTheta += 2 * Math.PI;
+  const endTheta = startSph.theta + dTheta;
+
+  const prog = { t: 0 };
+  _camTween = gsap.to(prog, {
+    t: 1,
+    duration: 2.5,
+    ease: 'power2.inOut',
+    onUpdate() {
+      const { t } = prog;
+      const look = startLook.clone().lerp(endLook, t);
+      const sph  = new THREE.Spherical(
+        THREE.MathUtils.lerp(startSph.radius, endSph.radius, t),
+        THREE.MathUtils.lerp(startSph.phi,    endSph.phi,    t),
+        THREE.MathUtils.lerp(startSph.theta,  endTheta,      t),
+      );
+      camera.position.copy(look).add(new THREE.Vector3().setFromSpherical(sph));
+      camera.lookAt(look);
+    },
+    onComplete() {
+      camera.position.copy(targetPos);
+      controls.target.copy(pinPos);
+      controls.enabled = true;
+      _camAnimating = false;
+      _camTween = null;
+      startAutoOrbit(pinPos, PIN_RADIUS, PIN_ELEV);
+    },
+  });
 }
 
 window.showPointList = function() {
+  stopAutoOrbit();
   updatePinHighlight(null);
   document.getElementById('point-list').style.display = '';
   document.getElementById('point-detail').classList.remove('visible');
