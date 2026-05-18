@@ -431,7 +431,7 @@ function renderPins(points) {
     labelDiv.style.cssText = `
       position:absolute;left:50%;transform:translateX(-50%);bottom:44px;
       background:rgba(255,204,0,0.88);backdrop-filter:blur(6px);
-      color:#1a1400;font-size:11px;font-family:'DM Mono',monospace;
+      color:#1a1400;font-size:14px;font-family:'DM Mono',monospace;
       padding:4px 8px;border-radius:6px;border:1px solid rgba(255,204,0,0.5);
       white-space:nowrap;pointer-events:auto;cursor:pointer;z-index:100;
     `;
@@ -442,6 +442,7 @@ function renderPins(points) {
       selectPoint(pt);
     });
     iconWrap.appendChild(labelDiv);
+    _allScaleEls.push(labelDiv);
 
     const icon = new CSS2DObject(iconWrap);
     icon.position.set(0, 1.3, 0);
@@ -456,7 +457,6 @@ function updatePinHighlight(selectedId) {
   _selectedId = selectedId;
   Object.entries(_pins).forEach(([id, pin]) => {
     const selected = id === selectedId;
-    pin.svgEl.style.transform = selected ? 'scale(1.25)' : '';
     pin.squareMat.color.setHex(selected ? 0x3399ff : 0xffcc00);
   });
 }
@@ -468,6 +468,8 @@ function removePin(id) {
   if (pin.icon.element.parentNode) pin.icon.element.parentNode.removeChild(pin.icon.element);
   const animIdx = _pinAnimatables.findIndex(a => a.squareMat === pin.squareMat);
   if (animIdx >= 0) _pinAnimatables.splice(animIdx, 1);
+  const scaleIdx = _allScaleEls.indexOf(pin.labelDiv);
+  if (scaleIdx >= 0) _allScaleEls.splice(scaleIdx, 1);
   delete _pins[id];
 }
 
