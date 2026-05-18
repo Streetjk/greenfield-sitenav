@@ -22,6 +22,10 @@ if (typeof window === 'undefined') {
         // Pass through opaque / error responses unchanged
         if (!r || r.status === 0 || r.type === 'opaque') return r;
 
+        // If the server already sends COOP, pass through untouched — wrapping the
+        // response can prevent the browser from honouring the server's own headers.
+        if (r.headers.has('Cross-Origin-Opener-Policy')) return r;
+
         const h = new Headers(r.headers);
         h.set('Cross-Origin-Opener-Policy',   'same-origin');
         h.set('Cross-Origin-Embedder-Policy', 'credentialless');
