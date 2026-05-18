@@ -88,7 +88,7 @@ labelsWrap.appendChild(css2d.domElement);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.06;   // lower = more momentum / smoother coast
-controls.rotateSpeed   = window.innerWidth > 767 ? 1.0 : 0.35;
+controls.rotateSpeed   = 0.35;
 controls.zoomSpeed     = 0.8;
 controls.panSpeed      = 0.7;
 controls.minDistance = 3;
@@ -1815,12 +1815,7 @@ async function boot() {
     fetch('./data/traffic.json').then(r => r.json()).catch(() => null),
     fetch('./data/roads.json').then(r => r.json()).catch(() => null),
   ]);
-  document.getElementById('load-fill').style.width = '30%';
-  document.getElementById('load-msg').textContent = 'Loading satellite…';
-
-  await _addGroundPlane();
-
-  document.getElementById('load-fill').style.width = '70%';
+  document.getElementById('load-fill').style.width = '40%';
   document.getElementById('load-msg').textContent = 'Building scene…';
 
   if (geoRes) await renderBuildings(geoRes);
@@ -1833,6 +1828,9 @@ async function boot() {
   document.getElementById('load-fill').style.width = '100%';
   await new Promise(r => setTimeout(r, 150));
   document.getElementById('loading').classList.add('done');
+
+  // Satellite and splat load in background so the scene is usable immediately
+  _addGroundPlane();
 
   // Expose API for admin3d.js and dispatch ready event
   window._v3d = { renderer, camera, controls, _raycaster, _pickGround, renderPins, removePin, updatePinHighlight, latlngToScene, pins: _pins };
