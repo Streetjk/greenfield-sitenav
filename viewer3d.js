@@ -886,16 +886,18 @@ async function renderBuildings(geoData) {
 // were at world Y = 2.0.  This makes traffic lose the depth test only
 // against splat content that is ABOVE Y=2 (buildings), not against
 // ground-level Gaussian blobs (Y<2) which sit slightly farther from camera.
-function _makeTrafficMat(hex) {
+function _makeTrafficMat(hex, depthY = 2.0) {
   return new THREE.ShaderMaterial({
     uniforms: { diffuse: { value: new THREE.Color(hex) } },
     vertexShader: `
       void main() {
         vec4 worldPos   = modelMatrix * vec4(position, 1.0);
         vec4 actualClip = projectionMatrix * viewMatrix * worldPos;
-        // Depth as if the vertex were at world Y = 2.0
+        // Depth as if the vertex were at world Y = ${depthY.toFixed(2)}
+        // Arrows use a slightly higher depthY (2.05) than ribbon (2.00) so
+        // arrows always win the depth test and never get clipped by the ribbon.
         vec4 shiftedClip = projectionMatrix * viewMatrix
-                         * vec4(worldPos.x, 2.0, worldPos.z, 1.0);
+                         * vec4(worldPos.x, ${depthY.toFixed(2)}, worldPos.z, 1.0);
         actualClip.z = (shiftedClip.z / shiftedClip.w) * actualClip.w;
         gl_Position = actualClip;
       }
@@ -949,8 +951,8 @@ function _redrawTraffic() {
     }
     const pts = route.points.map(([x, z]) => new THREE.Vector3(x, Y, z));
     if (pts.length < 2) return;
-    const ribbonMat = _makeTrafficMat(rc);
-    const arrowMat  = _makeTrafficMat(ac);
+    const ribbonMat = _makeTrafficMat(rc, 2.00);
+    const arrowMat  = _makeTrafficMat(ac, 2.05);
     const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal', 0.5);
     const samples = curve.getSpacedPoints(pts.length * 25);
     const hw = _roadWidth / 2;
@@ -1032,7 +1034,7 @@ function _redrawTraffic() {
           mesh.renderOrder = 3;
           const qY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(-dir.x, -dir.z));
           mesh.quaternion.multiplyQuaternions(qY, qX);
-          mesh.position.set(ep[0], Y + ethick * 0.5 + 0.04, ep[1]);
+          mesh.position.set(ep[0], Y + ethick * 0.5, ep[1]);
           _trafficGrp.add(mesh);
         });
       }
@@ -1071,7 +1073,7 @@ function _redrawTraffic() {
       arrowMesh.renderOrder = 3;
       const qY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(-dir.x, -dir.z));
       arrowMesh.quaternion.multiplyQuaternions(qY, qX);
-      arrowMesh.position.set(pos.x, Y + arrowThick * 0.5 + 0.10, pos.z);
+      arrowMesh.position.set(pos.x, Y + arrowThick * 0.5, pos.z);
       _trafficGrp.add(arrowMesh);
     }
   });
