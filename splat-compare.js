@@ -252,14 +252,22 @@ function createSliderUI(container, config) {
 
 function createLabel(text, side) {
   const el = document.createElement('div');
+  const parts = text.match(/^(.+?)\s+(\S+\s+\d{4})$/);
+  const mobile = window.innerWidth <= 767;
   Object.assign(el.style, {
-    position: 'absolute', top: '90px', [side]: '16px',
-    padding: '4px 12px', background: 'rgba(0,0,0,0.6)', color: '#fff',
-    borderRadius: '4px', fontSize: '12px',
+    position: 'absolute', top: '35%', transform: 'translateY(-50%)', [side]: '16px',
+    padding: '5px 14px', background: 'rgba(0,0,0,0.55)', color: '#fff',
+    borderRadius: '6px', fontSize: mobile ? '11px' : '12px',
     fontFamily: "'DM Sans', sans-serif", fontWeight: '500',
-    zIndex: '101', pointerEvents: 'none', backdropFilter: 'blur(4px)',
+    zIndex: '101', pointerEvents: 'none', backdropFilter: 'blur(6px)',
+    WebkitBackdropFilter: 'blur(6px)',
   });
-  el.textContent = text;
+  if (parts) {
+    el.innerHTML = `${parts[1]}<br>${parts[2]}`;
+    el.style.textAlign = 'center';
+  } else {
+    el.textContent = text;
+  }
   return el;
 }
 

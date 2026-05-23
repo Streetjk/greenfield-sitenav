@@ -99,10 +99,10 @@ controls.maxPolarAngle = THREE.MathUtils.degToRad(85);
 // Stop auto-orbit the moment the user grabs the camera
 controls.addEventListener('start', stopAutoOrbit);
 
-// Initial camera — overhead (mobile matches mobile overhead preset: 1.43× height)
+// Initial camera — matches overhead preset center
 const _initY = window.innerWidth <= 767 ? 26.60 * 1.43 : 26.60;
-camera.position.set(0.00, _initY, 0.00);
-controls.target.set(0.00, 0.00, 0.00);
+camera.position.set(0.27, _initY, -5.2);
+controls.target.set(0.27, 0.00, -5.2);
 controls.update();
 
 const _params = new URLSearchParams(location.search);
@@ -164,21 +164,35 @@ let _orbitAngle  = 0;    // current azimuth in radians
 let _orbitRadius = 10;
 let _orbitElev   = Math.PI / 4; // 45° elevation
 
+const AUTO_PAN_RADIUS = 12;
+let _orbitTween = null;
 function startAutoOrbit(target, radius, elevDeg) {
+  if (_orbitTween) { _orbitTween.kill(); _orbitTween = null; }
   _orbitTarget.copy(target);
-  _orbitRadius = radius;
-  _orbitElev   = elevDeg * Math.PI / 180;
-  // Preserve current azimuth so camera doesn't jump
-  _orbitAngle  = Math.atan2(
+  const targetElev = elevDeg * Math.PI / 180;
+  _orbitAngle = Math.atan2(
     camera.position.z - target.z,
     camera.position.x - target.x
   );
+  const currentElev = Math.asin(Math.min(1, Math.max(-1,
+    (camera.position.y - target.y) / Math.max(0.01, camera.position.distanceTo(target))
+  )));
+  _orbitElev = currentElev;
+  _orbitRadius = camera.position.distanceTo(target);
   _orbitActive = true;
+  const proxy = { elev: currentElev, r: _orbitRadius };
+  _orbitTween = gsap.to(proxy, {
+    elev: targetElev, r: AUTO_PAN_RADIUS, duration: 2, ease: 'power2.inOut',
+    onUpdate: () => { _orbitElev = proxy.elev; _orbitRadius = proxy.r; },
+    onComplete: () => { _orbitTween = null; },
+  });
 }
 
 function stopAutoOrbit() {
+  if (_orbitTween) { _orbitTween.kill(); _orbitTween = null; }
   if (!_orbitActive) return;
   _orbitActive = false;
+  controls.target.copy(_orbitTarget);
   controls.enabled = true;
   controls.update();
 }
@@ -330,8 +344,6 @@ animate();
 
 let PRESETS = {
   overhead: { pos: new THREE.Vector3(0.00, 26.60, 0.00), look: new THREE.Vector3(0.00, 0.00, 0.00) },
-  entry:    { pos: new THREE.Vector3(-5.07, 3.97, 16.01), look: new THREE.Vector3(-5.07, -0.03, 8.01) },
-  exit:     { pos: new THREE.Vector3(3.90,  4.01, 16.00), look: new THREE.Vector3(3.90,   0.01, 8.00) },
 };
 
 function _buildPresets(cfg) {
@@ -351,15 +363,15 @@ function _buildCamButtons(cfg) {
 
   const icons = {
     overhead: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>`,
-    entry: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M13.8 12H3"/></svg>`,
-    exit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M19.8 12H9"/></svg>`
+    autopan: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>`,
+    fullscreen: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>`,
   };
 
   (cfg.camera?.presets ?? []).forEach((p, i) => {
     const btn = document.createElement('button');
     btn.className = 'cam-preset-btn';
     btn.id = `btn-${p.id}`;
-    
+
     const icon = icons[p.id] || icons.overhead;
     btn.innerHTML = `<div class="icon-wrap">${icon}</div>`;
     const labelSpan = document.createElement('span');
@@ -367,7 +379,28 @@ function _buildCamButtons(cfg) {
     labelSpan.textContent = p.label;
     btn.appendChild(labelSpan);
 
-    btn.onclick = () => window.setCameraPreset(p.id);
+    if (p.action === 'fullscreen') {
+      btn.onclick = () => {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        } else {
+          document.exitFullscreen();
+        }
+      };
+    } else if (p.action === 'autopan') {
+      btn.onclick = () => {
+        if (_orbitActive) {
+          stopAutoOrbit();
+          btn.classList.remove('active');
+        } else {
+          startAutoOrbit(controls.target.clone(), camera.position.distanceTo(controls.target), p.elevationDeg ?? 40);
+          document.querySelectorAll('.cam-preset-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        }
+      };
+    } else {
+      btn.onclick = () => window.setCameraPreset(p.id);
+    }
     wrap.appendChild(btn);
   });
 

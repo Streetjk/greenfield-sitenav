@@ -120,6 +120,8 @@
       color: #ffffff;
       text-transform: uppercase;
       margin-bottom: 36px;
+      text-align: center;
+      padding: 0 20px;
     }
 
     .load-bar {
@@ -643,6 +645,15 @@
     }
 
     /* ── Mobile bottom sheet (≤767px) ── */
+    @media (max-width: 1024px) {
+      .load-site-sub { font-size: 28px; letter-spacing: 0.15em; }
+      .load-logo-mark img { height: 50px; }
+    }
+    @media (max-width: 767px) {
+      .load-site-sub { font-size: 22px; letter-spacing: 0.1em; padding: 0 16px; }
+      .load-logo-mark img { height: 44px; max-width: 160px; }
+      .load-bar { width: 200px; }
+    }
     @media (max-width: 767px) {
       #app { position: relative; flex-direction: row !important; }
       #canvas-wrap { width: 100%; height: 100%; position: absolute; inset: 0; flex: none; min-height: 0; }
@@ -793,7 +804,7 @@
   <div id="cam-presets"></div>
 
   <div id="site-brand" style="position:fixed;top:16px;right:16px;z-index:40;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:4px;">
-    <img id="site-logo" src="" alt="Company logo" style="height:44px;width:auto;opacity:0.9;display:none;filter:brightness(0) invert(1);">
+    <img id="site-logo" src="" alt="Company logo" style="height:44px;width:auto;opacity:0.9;display:none;filter:brightness(0) invert(1) drop-shadow(0.5px 0 0 #000) drop-shadow(-0.5px 0 0 #000) drop-shadow(0 0.5px 0 #000) drop-shadow(0 -0.5px 0 #000);">
     <div id="site-address" style="font:500 18px 'Inter','DM Sans',sans-serif;color:rgba(255,255,255,0.9);text-shadow:0 1px 4px rgba(0,0,0,0.85);text-align:center;">Mentone La, Greenfields</div>
   </div>
 
