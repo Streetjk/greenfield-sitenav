@@ -1,10 +1,13 @@
 services:
   - type: web
-    name: landcros-forrestdale
-    runtime: node
+    name: greenfield-sitenav
+    runtime: static
     buildCommand: ""
-    startCommand: node server.js
-    healthCheckPath: /
-    envVars:
-      - key: NODE_VERSION
-        value: 20
+    staticPublishPath: .
+    headers:
+      - path: /*
+        name: Cross-Origin-Opener-Policy
+        value: same-origin
+      - path: /*
+        name: Cross-Origin-Embedder-Policy
+        value: credentialless
