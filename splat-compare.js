@@ -222,11 +222,27 @@ function createSliderUI(container, config) {
   handle.textContent = '⇔';
   slider.appendChild(handle);
 
-  const labels = config.models || [];
-  if (labels.length >= 2) {
-    container.appendChild(createLabel(labels[0].label || 'Model 1', 'left'));
-    container.appendChild(createLabel(labels[1].label || 'Model 2', 'right'));
+  const labelEls = [];
+  const labelDefs = config.models || [];
+  if (labelDefs.length >= 2) {
+    const lL = createLabel(labelDefs[0].label || 'Model 1', 'left');
+    const lR = createLabel(labelDefs[1].label || 'Model 2', 'right');
+    container.appendChild(lL);
+    container.appendChild(lR);
+    labelEls.push(lL, lR);
   }
+
+  const updateLabelVisibility = () => {
+    if (!labelEls.length) return;
+    const rect = container.getBoundingClientRect();
+    const sliderCx = rect.left + _sliderX * rect.width;
+    const halfW = 20;
+    labelEls.forEach(el => {
+      const lr = el.getBoundingClientRect();
+      const overlaps = sliderCx + halfW > lr.left && sliderCx - halfW < lr.right;
+      el.style.opacity = overlaps ? '0' : '1';
+    });
+  };
 
   let dragging = false;
   const onMove = (e) => {
@@ -236,6 +252,7 @@ function createSliderUI(container, config) {
     _sliderX = Math.max(0.02, Math.min(0.98, (clientX - rect.left) / rect.width));
     _splitDirty = true;
     slider.style.left = `${(_sliderX * 100).toFixed(1)}%`;
+    updateLabelVisibility();
   };
   const onUp = () => { dragging = false; };
   slider.addEventListener('mousedown', (e) => { dragging = true; e.preventDefault(); });
@@ -260,7 +277,7 @@ function createLabel(text, side) {
     borderRadius: '6px', fontSize: mobile ? '11px' : '12px',
     fontFamily: "'DM Sans', sans-serif", fontWeight: '500',
     zIndex: '101', pointerEvents: 'none', backdropFilter: 'blur(6px)',
-    WebkitBackdropFilter: 'blur(6px)',
+    WebkitBackdropFilter: 'blur(6px)', transition: 'opacity 0.15s ease',
   });
   if (parts) {
     el.innerHTML = `${parts[1]}<br>${parts[2]}`;
@@ -829,7 +846,7 @@ export async function initComparison(cfg, sceneRef, rendererRef, cameraRef, rota
       selfDrivenMode: false, useBuiltInControls: false,
       renderer: _renderer, camera: _camera,
       gpuAcceleratedSort: false, sharedMemoryForWorkers: false,
-      splatAlphaRemovalThreshold: 5,
+      splatAlphaRemovalThreshold: 40,
     });
 
     await sv.addSplatScene(model.splat, { showLoadingUI: false });
@@ -862,7 +879,7 @@ export async function initComparison(cfg, sceneRef, rendererRef, cameraRef, rota
         selfDrivenMode: false, useBuiltInControls: false,
         renderer: _renderer, camera: _camera,
         gpuAcceleratedSort: false, sharedMemoryForWorkers: false,
-        splatAlphaRemovalThreshold: 5,
+        splatAlphaRemovalThreshold: 40,
       });
       await bgSv.addSplatScene(bgPath, { showLoadingUI: false });
 
