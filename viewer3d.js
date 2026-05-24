@@ -1595,17 +1595,6 @@ async function _addGroundPlane() {
   _planeGroup.add(ground);
   scene.add(_planeGroup);
 
-  // White ground fill — renders above satellite and all model layers at y=0;
-  // depthTest keeps splat geometry visible above it.
-  const _whiteFill = new THREE.Mesh(
-    new THREE.PlaneGeometry(600, 600),
-    new THREE.MeshBasicMaterial({ color: 0xffffff, depthWrite: true })
-  );
-  _whiteFill.rotation.x = -Math.PI / 2;
-  _whiteFill.position.y = 0.005;
-  _whiteFill.renderOrder = 5;
-  scene.add(_whiteFill);
-
   // Restore saved plane transform
   const LS_PLANE = 'planeTransform';
   const savedPlane = _lsGet(LS_PLANE, null);
@@ -2174,6 +2163,18 @@ async function boot() {
   document.getElementById('load-fill').style.width = '20%';
   document.getElementById('load-msg').textContent = 'Loading satellite…';
   if (_showOverlays && !_cfg.comparison?.enabled) await _addGroundPlane();
+
+  // White fill always added, regardless of mode (covers satellite/soil below splat)
+  {
+    const _whiteFill = new THREE.Mesh(
+      new THREE.PlaneGeometry(600, 600),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, depthWrite: true })
+    );
+    _whiteFill.rotation.x = -Math.PI / 2;
+    _whiteFill.position.y = 0.005;
+    _whiteFill.renderOrder = 5;
+    scene.add(_whiteFill);
+  }
 
   document.getElementById('load-fill').style.width = '40%';
   document.getElementById('load-msg').textContent = 'Building scene…';
