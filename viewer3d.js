@@ -2171,7 +2171,7 @@ async function boot() {
       new THREE.MeshBasicMaterial({ color: 0xffffff, depthWrite: true })
     );
     _whiteFill.rotation.x = -Math.PI / 2;
-    _whiteFill.position.y = 0.005;
+    _whiteFill.position.y = -0.5;
     _whiteFill.renderOrder = 5;
     scene.add(_whiteFill);
   }
