@@ -268,6 +268,7 @@ function _updateCamHud() {
 // ── Animation loop ─────────────────────────────────────────────────────────
 
 let _splatViewer = null;
+let _introPlayed = false;
 
 // Idle throttle: render at full rate when active, drop to ~10 fps when still.
 const _prevCamPos = new THREE.Vector3();
@@ -1941,7 +1942,45 @@ async function loadComparisonScene(route) {
   setTimeout(() => { if (wrap) wrap.style.display = 'none'; }, 1200);
 }
 
-async function loadSplatBackground() {
+function _doIntroAnimation() {
+  if (!_splatViewer || _introPlayed) return;
+  _introPlayed = true;
+  controls.enabled = false;
+  _camAnimating = true;
+  const lookAt   = new THREE.Vector3(0, 0, 0);
+  const startSph = new THREE.Spherical().setFromVector3(camera.position);
+  const _intro = _cfg.camera?.introAnimation ?? {};
+  const endSph   = new THREE.Spherical(
+    _intro.radius ?? 19.55,
+    THREE.MathUtils.degToRad(_intro.phi   ?? 80.9),
+    THREE.MathUtils.degToRad(_intro.theta ?? -25.9),
+  );
+  const prog     = { t: 0 };
+  _camTween = gsap.to(prog, {
+    t: 1,
+    duration: 3.0,
+    delay: 0.4,
+    ease: 'power2.inOut',
+    onUpdate() {
+      camera.position.setFromSpherical(new THREE.Spherical(
+        THREE.MathUtils.lerp(startSph.radius, endSph.radius, prog.t),
+        THREE.MathUtils.lerp(startSph.phi,    endSph.phi,    prog.t),
+        THREE.MathUtils.lerp(startSph.theta,  endSph.theta,  prog.t),
+      ));
+      camera.lookAt(lookAt);
+    },
+    onComplete() {
+      controls.target.copy(lookAt);
+      controls.enabled = true;
+      _camAnimating = false;
+      _camTween = null;
+      controls.update();
+    },
+  });
+}
+
+async function loadSplatBackground(opts = {}) {
+  const { onProgress } = opts;
   if (_Q.skipSplat) return; // save-data / 2G: skip the large splat download entirely
   const _splatAsset = _cfg.assets?.splat;
   const candidates = Array.isArray(_splatAsset) ? _splatAsset
@@ -1960,8 +1999,8 @@ async function loadSplatBackground() {
   const bar  = document.getElementById('splat-bar');
   const msg  = document.getElementById('splat-msg');
   const wrap = document.getElementById('splat-progress');
-  if (wrap) wrap.style.display = 'flex';
-  if (msg)  msg.textContent = `Loading ${ext}… 0%`;
+  if (!onProgress && wrap) wrap.style.display = 'flex';
+  if (!onProgress && msg)  msg.textContent = `Loading ${ext}… 0%`;
 
   // Hoisted so the point cloud fallback catch-block can reuse the downloaded bytes
   let rawBuf = null;
@@ -1969,7 +2008,7 @@ async function loadSplatBackground() {
   try {
     // Pass 1: fetch raw bytes and scan positions for bounding box.
     // Only valid for .splat (32-byte records) — skip pre-scan for .ply to avoid NaN bounds.
-    if (msg) msg.textContent = `Scanning ${ext}…`;
+    if (!onProgress && msg) msg.textContent = `Scanning ${ext}…`;
     rawBuf = ext === 'SPLAT' ? await fetch(splatPath).then(r => r.arrayBuffer()) : null;
     const STRIDE = 32;
     let cx = 0, cy = 0, cz = 0, scale = 1;
@@ -1993,7 +2032,7 @@ async function loadSplatBackground() {
       scale = 40 / span;
     }
 
-    if (msg) msg.textContent = `Loading ${ext}… 0%`;
+    if (!onProgress && msg) msg.textContent = `Loading ${ext}… 0%`;
     const GS3D = await import('@mkkellogg/gaussian-splats-3d');
     const sv = new GS3D.Viewer({
       selfDrivenMode: false,
@@ -2010,8 +2049,12 @@ async function loadSplatBackground() {
         showLoadingUI: false,
         onProgress: (p) => {
           const pct = Math.min(99, Math.round(p));
-          if (bar) bar.style.width = pct + '%';
-          if (msg) msg.textContent = `Loading ${ext}… ${pct}%`;
+          if (onProgress) {
+            onProgress(pct);
+          } else {
+            if (bar) bar.style.width = pct + '%';
+            if (msg) msg.textContent = `Loading ${ext}… ${pct}%`;
+          }
         },
       }),
       new Promise((_, reject) =>
@@ -2040,47 +2083,18 @@ async function loadSplatBackground() {
     controls.minDistance = 1;
     controls.maxDistance = 100;
 
-    // Splat is ready — arc camera from overhead to a 45° side view over 3 s.
-    // Interpolate in spherical coords so the camera follows an arc (no straight-
-    // line zoom-in artifact that occurs when animating Cartesian x/y/z directly).
-    controls.enabled = false;
-    _camAnimating = true;
-    const lookAt   = new THREE.Vector3(0, 0, 0);
-    // End position: side-45° view at a closer distance than the overhead start.
-    // Arc from current overhead radius → smaller end radius = genuine zoom-in.
-    const startSph = new THREE.Spherical().setFromVector3(camera.position);
-    const _intro = _cfg.camera?.introAnimation ?? {};
-    const endSph   = new THREE.Spherical(
-      _intro.radius ?? 19.55,
-      THREE.MathUtils.degToRad(_intro.phi   ?? 80.9),
-      THREE.MathUtils.degToRad(_intro.theta ?? -25.9),
-    );
-    const prog     = { t: 0 };
-    _camTween = gsap.to(prog, {
-      t: 1,
-      duration: 3.0,
-      delay: 0.4,
-      ease: 'power2.inOut',
-      onUpdate() {
-        camera.position.setFromSpherical(new THREE.Spherical(
-          THREE.MathUtils.lerp(startSph.radius, endSph.radius, prog.t),
-          THREE.MathUtils.lerp(startSph.phi,    endSph.phi,    prog.t),
-          THREE.MathUtils.lerp(startSph.theta,  endSph.theta,  prog.t),
-        ));
-        camera.lookAt(lookAt);
-      },
-      onComplete() {
-        controls.target.copy(lookAt);
-        controls.enabled = true;
-        _camAnimating = false;
-        _camTween = null;
-        controls.update();
-      },
-    });
+    if (onProgress) {
+      onProgress(100);
+      if (!_introPlayed) _doIntroAnimation();
+    } else {
+      _doIntroAnimation();
+    }
 
-    if (msg) msg.textContent = 'Splat ready';
-    if (bar) bar.style.width = '100%';
-    setTimeout(() => { if (wrap) wrap.style.display = 'none'; }, 1200);
+    if (!onProgress) {
+      if (msg) msg.textContent = 'Splat ready';
+      if (bar) bar.style.width = '100%';
+      setTimeout(() => { if (wrap) wrap.style.display = 'none'; }, 1200);
+    }
 
     if (_cfg.comparison?.enabled) {
       if (_planeGroup) _planeGroup.visible = false;
@@ -2094,8 +2108,10 @@ async function loadSplatBackground() {
     return;
   } catch (err) {
     console.warn('Splat load failed:', err);
-    if (msg) msg.textContent = `Splat error: ${err.message}`;
-    setTimeout(() => { if (wrap) wrap.style.display = 'none'; }, 3000);
+    if (!onProgress) {
+      if (msg) msg.textContent = `Splat error: ${err.message}`;
+      setTimeout(() => { if (wrap) wrap.style.display = 'none'; }, 3000);
+    }
   }
 }
 
@@ -2122,6 +2138,18 @@ async function boot() {
   const _compOnly = _isComparisonOnly();
   const _showOverlays = _cfg.scene?.showSiteOverlays !== false && !_compOnly;
 
+  // Start splat download in parallel while scene loads.
+  // onProgress only writes to the bar once scene has advanced it to ≥55%.
+  const splatPromise = (!_Q.skipSplat && !_compOnly) ? loadSplatBackground({
+    onProgress: (pct) => {
+      const current = parseFloat(document.getElementById('load-fill').style.width) || 0;
+      if (current >= 55) {
+        document.getElementById('load-fill').style.width = (55 + Math.round(pct * 0.44)) + '%';
+        document.getElementById('load-msg').textContent = `Loading 3D model… ${pct}%`;
+      }
+    },
+  }) : Promise.resolve();
+
   document.getElementById('load-msg').textContent = 'Loading site data…';
 
   let geoRes = null, trafficRes = null, roadsRes = null;
@@ -2132,11 +2160,11 @@ async function boot() {
       fetch('./data/roads.json').then(r => r.json()).catch(() => null),
     ]);
   }
-  document.getElementById('load-fill').style.width = '30%';
+  document.getElementById('load-fill').style.width = '20%';
   document.getElementById('load-msg').textContent = 'Loading satellite…';
   if (_showOverlays && !_cfg.comparison?.enabled) await _addGroundPlane();
 
-  document.getElementById('load-fill').style.width = '70%';
+  document.getElementById('load-fill').style.width = '40%';
   document.getElementById('load-msg').textContent = 'Building scene…';
 
   if (geoRes) await renderBuildings(geoRes);
@@ -2146,10 +2174,25 @@ async function boot() {
   _redrawTraffic();
   if (_debugMode) _initEditorUI();
 
+  // Hand bar to splat phase (55–99%) then wait up to 30 s for it to finish.
+  if (!_Q.skipSplat && !_compOnly) {
+    document.getElementById('load-fill').style.width = '55%';
+    document.getElementById('load-msg').textContent = 'Loading 3D model…';
+    await Promise.race([splatPromise, new Promise(r => setTimeout(r, 30000))]);
+  }
+
+  // Fade out the site name — "erased by the divider" before screen closes.
+  const _siteSub = document.querySelector('.load-site-sub');
+  if (_siteSub) _siteSub.style.opacity = '0';
+  await new Promise(r => setTimeout(r, 450));
+
   document.getElementById('load-fill').style.width = '100%';
-  await new Promise(r => setTimeout(r, 150));
+  await new Promise(r => setTimeout(r, 100));
   document.getElementById('loading').classList.add('done');
-  setTimeout(() => document.getElementById('app')?.classList.add('scene-ready'), 700);
+  setTimeout(() => {
+    document.getElementById('app')?.classList.add('scene-ready');
+    _doIntroAnimation();
+  }, 700);
 
   // Expose API for admin3d.js and dispatch ready event
   window._v3d = { renderer, camera, controls, _raycaster, _pickGround, renderPins, removePin, updatePinHighlight, latlngToScene, pins: _pins };
@@ -2166,12 +2209,8 @@ async function boot() {
     renderPointList(points);
   }
 
-  // Load scene — comparison-only skips primary splat entirely
-  if (_compOnly) {
-    loadComparisonScene(_route);
-  } else {
-    loadSplatBackground();
-  }
+  // Comparison-only view loads its own scene
+  if (_compOnly) loadComparisonScene(_route);
 }
 
 boot();
