@@ -4,15 +4,18 @@ import { generateQR, downloadQR } from './qr.js';
 // ── State ─────────────────────────────────────────────────────────────────────
 let _v3d           = null;
 let _points        = [];
+let _personalPins  = [];
 let _contacts      = [];
 let _contactsAll   = [];
 let _siteBounds    = null;
 let _editingPoint  = null;
 let _editingType   = null;
+let _editingScope  = 'personal';
 let _editingContactIds = [];
 let _saving        = false;
 let _isNewPoint    = false;
 let _placing        = false;
+let _userId        = null;
 
 // ── Esc key ───────────────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
@@ -36,13 +39,61 @@ window.addEventListener('viewer3d:ready', async () => {
   [_points, _contacts] = await Promise.all([getPoints(), getContacts()]);
   _contactsAll = [..._contacts];
 
-  await Promise.all(_points.map(async pt => {
+  _userId = _getUserId();
+  _personalPins = _loadPersonalPins();
+
+  const allPins = [..._points, ..._personalPins];
+  await Promise.all(allPins.map(async pt => {
     pt.position3d = await _v3d.latlngToScene(pt.latlng[0], pt.latlng[1]);
   }));
 
-  _v3d.renderPins(_points);
+  _v3d.renderPins(allPins);
   renderPointList();
+
+  document.getElementById('point-list').addEventListener('click', e => {
+    const item = e.target.closest('[data-pt-id]');
+    if (item) window._adminOpenEditor(item.dataset.ptId);
+  });
+
+  document.getElementById('drawer-body').addEventListener('click', e => {
+    const chip = e.target.closest('[data-remove-contact]');
+    if (chip) window._adminRemoveContact(chip.dataset.removeContact);
+  });
+
+  document.getElementById('drawer-body').addEventListener('change', e => {
+    const typeEl = e.target.closest('[data-type-value]');
+    if (typeEl) window._adminSetType(typeEl.dataset.typeValue);
+    const scopeEl = e.target.closest('[data-scope-value]');
+    if (scopeEl) window._adminSetScope(scopeEl.dataset.scopeValue);
+  });
 });
+
+// ── Personal pin storage ──────────────────────────────────────────────────────
+function _getUserId() {
+  if (_userId) return _userId;
+  let id = localStorage.getItem('sn_uid');
+  if (!id) { id = crypto.randomUUID(); localStorage.setItem('sn_uid', id); }
+  _userId = id;
+  return id;
+}
+
+function _loadPersonalPins() {
+  try { return JSON.parse(localStorage.getItem('sn_user_pins') || '[]'); }
+  catch { return []; }
+}
+
+function _savePersonalPins(pins) {
+  localStorage.setItem('sn_user_pins', JSON.stringify(pins));
+}
+
+function _addToHistory(pt) {
+  try {
+    const hist = JSON.parse(localStorage.getItem('sn_pin_history') || '[]');
+    hist.unshift({ id: pt.id, label: pt.label, latlng: pt.latlng, timestamp: new Date().toISOString() });
+    if (hist.length > 50) hist.length = 50;
+    localStorage.setItem('sn_pin_history', JSON.stringify(hist));
+  } catch {}
+}
 
 // ── Inverse coord: scene pos3d → [lat, lng] ───────────────────────────────────
 function _sceneToLatlng(x, z) {
@@ -128,6 +179,7 @@ function _placePin(pos3d) {
     id: _uuid(),
     label: 'New pin',
     type: 'drop-off',
+    scope: 'personal',
     latlng,
     position3d: { x: pos3d.x, y: 0, z: pos3d.z },
     notes: '',
@@ -136,12 +188,12 @@ function _placePin(pos3d) {
     routeWaypoints3d: [],
     cameraPreset3d: { position: { x: 0, y: 5, z: -3 }, lookAt: { x: 0, y: 0, z: 0 } },
     buildingRef: '',
-    createdBy: 'browser',
+    createdBy: _getUserId(),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
   _isNewPoint = true;
-  _v3d.renderPins([newPt]);
+  _v3d.upsertPin(newPt);
   openEditor(newPt);
 }
 
@@ -149,34 +201,62 @@ function _placePin(pos3d) {
 function renderPointList(filter = '') {
   const el = document.getElementById('point-list');
   const lf = filter.toLowerCase();
-  const visible = _points.filter(p =>
+
+  const visibleShared = _points.filter(p =>
     !lf || p.label.toLowerCase().includes(lf) || p.type.includes(lf)
   );
+  const visiblePersonal = _personalPins.filter(p =>
+    !lf || p.label.toLowerCase().includes(lf) || p.type.includes(lf)
+  );
+
   const groups = { 'drop-off': [], 'collection': [], 'both': [] };
-  visible.forEach(p => (groups[p.type] ?? groups['drop-off']).push(p));
+  visibleShared.forEach(p => (groups[p.type] ?? groups['drop-off']).push(p));
   const dotColor = { 'drop-off': 'var(--primary)', 'collection': 'var(--accent)', 'both': 'var(--amber)' };
   const typeLabel = { 'drop-off': 'Drop-off', 'collection': 'Collection', 'both': 'Both' };
 
   let html = '';
-  for (const [type, pts] of Object.entries(groups)) {
-    if (!pts.length) continue;
-    html += `<div class="list-section">${typeLabel[type]}</div>`;
-    pts.forEach(p => {
-      const isActive = _editingPoint?.id === p.id;
-      html += `<div class="point-item${isActive ? ' selected' : ''}" onclick="window._adminOpenEditor('${p.id}')">
-        <div class="pt-dot" style="background:${dotColor[type]}"></div>
-        <div class="pt-label">${_esc(p.label)}</div>
-        <span style="color:var(--text-tertiary);font-size:16px">›</span>
-      </div>`;
-    });
+
+  if (visibleShared.length) {
+    html += `<div class="list-section">Shared pins</div>`;
+    for (const [type, pts] of Object.entries(groups)) {
+      if (!pts.length) continue;
+      html += `<div class="list-section" style="font-size:11px;padding-left:12px">${typeLabel[type]}</div>`;
+      pts.forEach(p => {
+        const isActive = _editingPoint?.id === p.id;
+        const item = document.createElement('div');
+        item.className = 'point-item' + (isActive ? ' selected' : '');
+        item.dataset.ptId = p.id;
+        item.innerHTML = `<div class="pt-dot" style="background:${dotColor[type]}"></div><div class="pt-label">${_esc(p.label)}</div><span style="color:var(--text-tertiary);font-size:16px">›</span>`;
+        html += item.outerHTML;
+      });
+    }
   }
-  if (!visible.length) {
+
+  html += `<div class="list-section">My pins</div>`;
+  if (visiblePersonal.length) {
+    visiblePersonal.forEach(p => {
+      const isActive = _editingPoint?.id === p.id;
+      const item = document.createElement('div');
+      item.className = 'point-item' + (isActive ? ' selected' : '');
+      item.dataset.ptId = p.id;
+      item.innerHTML = `<div class="pt-dot" style="background:#4F6AF5"></div><div class="pt-label">${_esc(p.label)}</div><span style="color:var(--text-tertiary);font-size:16px">›</span>`;
+      html += item.outerHTML;
+    });
+  } else {
+    html += `<div style="padding:12px 16px;font-size:12px;color:var(--text-secondary)">No personal pins yet — place a pin and choose 'My pin'</div>`;
+  }
+
+  if (!visibleShared.length && !visiblePersonal.length) {
     html = `<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:13px">No pins found</div>`;
   }
+
   el.innerHTML = html;
 }
 
-window._adminOpenEditor = id => openEditor(_points.find(p => p.id === id));
+window._adminOpenEditor = id => {
+  const pt = _points.find(p => p.id === id) || _personalPins.find(p => p.id === id);
+  openEditor(pt);
+};
 window.filterPins = val => renderPointList(val);
 
 // ── Editor drawer ─────────────────────────────────────────────────────────────
@@ -185,6 +265,7 @@ function openEditor(pt) {
   _editingPoint = pt;
   _editingContactIds = [...pt.contactIds];
   _editingType = pt.type;
+  _editingScope = pt.scope ?? 'shared';
   document.getElementById('drawer-title').textContent = pt.label || 'New pin';
   document.getElementById('list-view').classList.add('panel-slide-out');
   document.getElementById('editor-view').classList.add('panel-slide-in');
@@ -211,11 +292,61 @@ function renderDrawerBody() {
   const allContacts = _contacts.filter(c => c.active);
   const assigned   = _editingContactIds.map(id => allContacts.find(c => c.id === id)).filter(Boolean);
   const unassigned = allContacts.filter(c => !_editingContactIds.includes(c.id));
-  const chips = assigned.map(c => `
-    <span class="contact-chip">${_esc(c.name)}
-      <button class="chip-remove" onclick="window._adminRemoveContact('${c.id}')" aria-label="Remove">&times;</button>
-    </span>`).join('');
-  const typeLabel = { 'drop-off': 'Drop-off', 'collection': 'Collection', 'both': 'Both' };
+  const typeLabel  = { 'drop-off': 'Drop-off', 'collection': 'Collection', 'both': 'Both' };
+  const isPersonal = _editingScope === 'personal';
+
+  const chips = assigned.map(c => {
+    const btn = document.createElement('button');
+    btn.className = 'chip-remove';
+    btn.setAttribute('aria-label', 'Remove');
+    btn.dataset.removeContact = c.id;
+    btn.textContent = '×';
+    const span = document.createElement('span');
+    span.className = 'contact-chip';
+    span.textContent = c.name + ' ';
+    span.appendChild(btn);
+    return span.outerHTML;
+  }).join('');
+
+  const typeRadios = ['drop-off', 'collection', 'both'].map(t => {
+    const label = document.createElement('label');
+    label.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer';
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'pt-type';
+    input.value = t;
+    input.dataset.typeValue = t;
+    if (_editingType === t) input.checked = true;
+    label.appendChild(input);
+    label.appendChild(document.createTextNode(' ' + typeLabel[t]));
+    return label.outerHTML;
+  }).join('');
+
+  const scopeRadios = ['personal', 'shared'].map(s => {
+    const label = document.createElement('label');
+    label.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer';
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'pt-scope';
+    input.value = s;
+    input.dataset.scopeValue = s;
+    if (_editingScope === s) input.checked = true;
+    label.appendChild(input);
+    label.appendChild(document.createTextNode(s === 'personal' ? ' My pin (this device only)' : ' Shared (saved to site)'));
+    return label.outerHTML;
+  }).join('');
+
+  const optionEls = unassigned.map(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.name + ' — ' + c.role;
+    return opt.outerHTML;
+  }).join('');
+
+  const actionButtons = isPersonal
+    ? `<button class="btn-secondary" style="flex:1" onclick="window._adminSharePersonal()">Share…</button>`
+    : `<button class="btn-secondary" style="flex:1" onclick="window._adminToggleQR()">QR code</button>
+       <button class="btn-secondary" style="flex:1" onclick="window._adminCopyLink()">Copy link</button>`;
 
   document.getElementById('drawer-body').innerHTML = `
     <div class="form-group">
@@ -224,22 +355,20 @@ function renderDrawerBody() {
     </div>
     <div class="form-group">
       <label class="form-label">Type</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${['drop-off','collection','both'].map(t => `
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer">
-            <input type="radio" name="pt-type" value="${t}" ${_editingType===t?'checked':''} onchange="window._adminSetType('${t}')">
-            ${typeLabel[t]}
-          </label>`).join('')}
-      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${typeRadios}</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Pin scope</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${scopeRadios}</div>
     </div>
     <div class="form-group full">
       <label class="form-label">Contacts</label>
       <div id="contact-chips" style="margin-bottom:6px">
         ${chips || '<span style="font-size:12px;color:var(--text-secondary)">None assigned</span>'}
       </div>
-      <select class="form-input" id="contact-picker" onchange="window._adminAddContact(this.value)" style="max-width:280px">
+      <select class="form-input" id="contact-picker" style="max-width:280px">
         <option value="">Add contact…</option>
-        ${unassigned.map(c => `<option value="${c.id}">${_esc(c.name)} — ${_esc(c.role)}</option>`).join('')}
+        ${optionEls}
       </select>
     </div>
     <div class="form-group full">
@@ -248,16 +377,19 @@ function renderDrawerBody() {
     </div>
     <div class="full" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
       <button class="btn-primary" style="width:auto;padding:9px 18px" onclick="window._adminSave()">Save pin</button>
-      <div style="display:flex;gap:8px;flex:1;min-width:180px">
-        <button class="btn-secondary" style="flex:1" onclick="window._adminToggleQR()">QR code</button>
-        <button class="btn-secondary" style="flex:1" onclick="window._adminCopyLink()">Copy link</button>
-      </div>
+      <div style="display:flex;gap:8px;flex:1;min-width:180px">${actionButtons}</div>
       <button class="btn-primary danger" style="width:auto;padding:9px 14px" onclick="window._adminDelete()">Delete</button>
     </div>
   `;
+
+  document.getElementById('contact-picker').addEventListener('change', e => {
+    window._adminAddContact(e.target.value);
+    e.target.value = '';
+  });
 }
 
-window._adminSetType = type => { _editingType = type; };
+window._adminSetType  = type  => { _editingType  = type;  };
+window._adminSetScope = scope => { _editingScope = scope; renderDrawerBody(); };
 
 window._adminAddContact = id => {
   if (!id || _editingContactIds.includes(id)) return;
@@ -281,20 +413,38 @@ window._adminSave = async () => {
     _editingPoint.label      = label;
     _editingPoint.notes      = document.getElementById('field-notes').value.trim();
     _editingPoint.type       = _editingType;
+    _editingPoint.scope      = _editingScope;
     _editingPoint.contactIds = [..._editingContactIds];
     _editingPoint.updatedAt  = new Date().toISOString();
 
-    await savePoint(_editingPoint);
-
-    const idx = _points.findIndex(p => p.id === _editingPoint.id);
-    if (idx >= 0) _points[idx] = _editingPoint; else _points.push(_editingPoint);
-    _isNewPoint = false;
-
-    await _syncPin(_editingPoint);
-    renderPointList();
-    renderDrawerBody();
-    document.getElementById('drawer-title').textContent = _editingPoint.label;
-    showToast('Saved');
+    if (_editingPoint.scope === 'personal') {
+      const idx = _personalPins.findIndex(p => p.id === _editingPoint.id);
+      if (idx >= 0) _personalPins[idx] = _editingPoint; else _personalPins.push(_editingPoint);
+      _savePersonalPins(_personalPins);
+      _addToHistory(_editingPoint);
+      _points = _points.filter(p => p.id !== _editingPoint.id);
+      _isNewPoint = false;
+      _v3d.upsertPin(_editingPoint);
+      _v3d.updatePinHighlight(_editingPoint.id);
+      renderPointList();
+      renderDrawerBody();
+      document.getElementById('drawer-title').textContent = _editingPoint.label;
+      showToast('Saved to your device');
+    } else {
+      await savePoint(_editingPoint);
+      const idx = _points.findIndex(p => p.id === _editingPoint.id);
+      if (idx >= 0) _points[idx] = _editingPoint; else _points.push(_editingPoint);
+      _personalPins = _personalPins.filter(p => p.id !== _editingPoint.id);
+      _savePersonalPins(_personalPins);
+      _addToHistory(_editingPoint);
+      _isNewPoint = false;
+      _v3d.upsertPin(_editingPoint);
+      _v3d.updatePinHighlight(_editingPoint.id);
+      renderPointList();
+      renderDrawerBody();
+      document.getElementById('drawer-title').textContent = _editingPoint.label;
+      showToast('Saved');
+    }
   } catch (e) {
     showToast('Save failed — ' + (e.message || 'check connection'));
   } finally {
@@ -309,8 +459,13 @@ window._adminDelete = async () => {
   _saving = true;
   try {
     if (!_isNewPoint) {
-      await deletePoint(id);
-      _points = _points.filter(p => p.id !== id);
+      if (_editingPoint.scope === 'personal') {
+        _personalPins = _personalPins.filter(p => p.id !== id);
+        _savePersonalPins(_personalPins);
+      } else {
+        await deletePoint(id);
+        _points = _points.filter(p => p.id !== id);
+      }
     }
     _v3d.removePin(id);
     _isNewPoint   = false;
@@ -328,13 +483,6 @@ window._adminDelete = async () => {
     _saving = false;
   }
 };
-
-async function _syncPin(pt) {
-  _v3d.removePin(pt.id);
-  pt.position3d = await _v3d.latlngToScene(pt.latlng[0], pt.latlng[1]);
-  _v3d.renderPins([pt]);
-  _v3d.updatePinHighlight(pt.id);
-}
 
 // ── QR / link ─────────────────────────────────────────────────────────────────
 window._adminToggleQR = () => {
@@ -362,12 +510,31 @@ window._adminCopyLink = () => {
   showToast('Link copied!');
 };
 
+window._adminSharePersonal = () => {
+  if (!_editingPoint) return;
+  const payload = { label: _editingPoint.label, latlng: _editingPoint.latlng, notes: _editingPoint.notes, type: _editingPoint.type };
+  const hash = '#share=' + btoa(JSON.stringify(payload));
+  const url = `${location.origin}/viewer3d.html${hash}`;
+  navigator.clipboard.writeText(url).catch(() => {});
+  showToast('Share link copied!');
+};
+
 // ── Contact manager ───────────────────────────────────────────────────────────
+let _contactTbodyListenerAdded = false;
+
 window.openContactManager = async () => {
   _contactsAll = await getContacts();
   _contacts    = [..._contactsAll];
   window.renderContactTable('');
   document.getElementById('modal-backdrop').classList.add('open');
+
+  if (!_contactTbodyListenerAdded) {
+    _contactTbodyListenerAdded = true;
+    document.getElementById('contact-tbody').addEventListener('change', e => {
+      const cb = e.target.closest('[data-contact-id]');
+      if (cb && cb.type === 'checkbox') window._adminToggleActive(cb.dataset.contactId, cb.checked);
+    });
+  }
 };
 
 window.closeContactManager = () => {
@@ -386,11 +553,15 @@ window.renderContactTable = (filter = '') => {
   const usedIds = new Set(_points.flatMap(p => p.contactIds));
   document.getElementById('contact-tbody').innerHTML = rows.map(c => {
     const orphan = !usedIds.has(c.id);
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    if (c.active) cb.checked = true;
+    cb.dataset.contactId = c.id;
     return `<tr>
       <td>${_esc(c.name)}${orphan ? '<span class="orphan-badge">orphan</span>' : ''}</td>
       <td>${_esc(c.role)}</td>
       <td>${_esc(c.phone)}</td>
-      <td><input type="checkbox" ${c.active ? 'checked' : ''} onchange="window._adminToggleActive('${c.id}',this.checked)"></td>
+      <td>${cb.outerHTML}</td>
     </tr>`;
   }).join('');
 };
@@ -435,6 +606,10 @@ window._adminSaveNewContact = async () => {
 function _esc(str) {
   return String(str ?? '')
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function _escAttr(str) {
+  return String(str ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function showToast(msg) {

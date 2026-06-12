@@ -477,11 +477,13 @@ function _buildCamButtons(cfg) {
     wrap.appendChild(btn);
   });
 
-  // Speed limit sign — decorative, non-functional
-  const speedBtn = document.createElement('div');
-  speedBtn.className = 'cam-preset-btn speed-limit-sign';
-  speedBtn.innerHTML = `<div class="icon-wrap"><img src="speedlimit2.png" alt="Speed limit 10"></div><span class="label-wrap">Speed limit</span>`;
-  wrap.appendChild(speedBtn);
+  // Speed limit sign — decorative, site-specific (omitted when config lacks speedLimitSign)
+  if (_cfg.site?.speedLimitSign) {
+    const speedBtn = document.createElement('div');
+    speedBtn.className = 'cam-preset-btn speed-limit-sign';
+    speedBtn.innerHTML = `<div class="icon-wrap"><img src="${_cfg.site.speedLimitSign}" alt="Speed limit 10"></div><span class="label-wrap">Speed limit</span>`;
+    wrap.appendChild(speedBtn);
+  }
 
 }
 
@@ -489,10 +491,15 @@ function _applyBranding(cfg) {
   const s = cfg.site ?? {};
   if (s.name)    { const el = document.getElementById('panel-site');   if (el) el.textContent = s.name; }
   if (s.title)   { const el = document.getElementById('panel-title');  if (el) el.textContent = s.title; }
-  if (s.address) { const el = document.getElementById('site-address'); if (el) el.textContent = s.address; }
+  if (s.address) {
+    const el = document.getElementById('site-address'); if (el) el.textContent = s.address;
+    const sub = document.getElementById('load-site-sub'); if (sub) sub.textContent = s.address;
+  }
   if (s.logo) {
     const img = document.getElementById('site-logo');
     if (img) { img.src = s.logo; img.style.display = ''; }
+    const loadImg = document.getElementById('load-logo');
+    if (loadImg) { loadImg.src = s.logo; }
   }
 }
 
@@ -581,104 +588,115 @@ const PIN_COLORS = { 'drop-off': 0x185FA5, 'collection': 0x1D9E75, 'both': 0x854
 let _pins = {}; // id → { group, pinGroup, sphere, icon, label, squareMat, squareGroup, pt }
 let _selectedId = null;
 
+function _addPinToScene(pt) {
+  const { x, y, z } = pt.position3d;
+  const isPersonal = pt.scope === 'personal';
+
+  const group = new THREE.Group();
+  group.position.set(x, y, z);
+
+  // ── Animated ground square — 4 thin boxes, always above ground plane ─
+  const sq = 0.455, lineW = 0.12, sqH = 0.01;
+  const squareColor = isPersonal ? 0x4F6AF5 : 0x00b140;
+  const squareMat = new THREE.MeshBasicMaterial({
+    color: squareColor, transparent: true, opacity: 0.85, depthTest: false,
+  });
+  const squareGroup = new THREE.Group();
+  for (const [bx, bz, bw, bd] of [
+    [0,   -sq, sq * 2 + lineW, lineW],   // front (full width, covers corners)
+    [0,    sq, sq * 2 + lineW, lineW],   // back
+    [-sq,   0, lineW, sq * 2 - lineW],   // left (inner only)
+    [ sq,   0, lineW, sq * 2 - lineW],   // right
+  ]) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(bw, sqH, bd), squareMat);
+    m.position.set(bx, 0.05, bz);
+    m.renderOrder = 999;
+    squareGroup.add(m);
+  }
+  group.add(squareGroup);
+  _pinAnimatables.push({ squareGroup, squareMat });
+
+  // ── Pin icon + label — single CSS2DObject so they move as one unit ────
+  // Anchor at y=1.3 (pin tip). SVG extends 40px up; label floats above SVG.
+  const pinGroup = new THREE.Group();
+  group.add(pinGroup);
+
+  // Invisible sphere — raycast hit target only
+  const sphere = new THREE.Mesh(
+    new THREE.SphereGeometry(0.2, 8, 6),
+    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+  );
+  sphere.position.y = 1.3;
+  pinGroup.add(sphere);
+
+  // Wrapper: 0×0 anchor div; CSS2DRenderer translates it to screen position
+  const iconWrap = document.createElement('div');
+  iconWrap.style.cssText = 'width:0;height:0;pointer-events:none;';
+
+  // SVG pin icon — tip aligns with anchor point
+  const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svgEl.setAttribute('width', '28');
+  svgEl.setAttribute('height', '40');
+  svgEl.setAttribute('viewBox', '0 0 28 40');
+  svgEl.style.cssText = 'position:absolute;left:-14px;top:-40px;pointer-events:none;z-index:100;overflow:visible;transform-origin:50% 100%;';
+  const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  pathEl.setAttribute('fill-rule', 'evenodd');
+  pathEl.setAttribute('d', 'M14,1 C7.4,1 2,6.4 2,13 C2,23 14,39 14,39 C14,39 26,23 26,13 C26,6.4 20.6,1 14,1 Z M14,8 a5,5 0 1,0 0.001,0 Z');
+  pathEl.setAttribute('fill', isPersonal ? 'rgba(79,106,245,0.85)' : 'rgba(220,30,30,0.85)');
+  svgEl.appendChild(pathEl);
+  iconWrap.appendChild(svgEl);
+
+  // Label — fixed pixel offset above the SVG, centered on anchor
+  // Outer div handles position only; inner span is the scale target (same
+  // pattern as building labels) so _allScaleEls doesn't clobber translateX.
+  const labelDiv = document.createElement('div');
+  labelDiv.style.cssText = `
+    position:absolute;left:50%;transform:translateX(-50%);bottom:44px;
+    pointer-events:auto;cursor:pointer;z-index:100;
+  `;
+  const labelInner = document.createElement('span');
+  const labelBg = isPersonal ? 'rgba(79,106,245,0.80)' : 'rgba(0,177,64,0.80)';
+  labelInner.style.cssText = `
+    display:inline-block;
+    background:${labelBg};backdrop-filter:blur(6px);
+    color:#ffffff;font:600 18px 'DM Sans',sans-serif;
+    padding:4px 8px;border-radius:6px;
+    white-space:nowrap;transform-origin:50% 100%;
+  `;
+  labelInner.textContent = pt.label;
+  labelDiv.appendChild(labelInner);
+  labelDiv.addEventListener('pointerup', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    selectPoint(pt);
+  });
+  iconWrap.appendChild(labelDiv);
+  _allScaleEls.push(labelInner);
+
+  const icon = new CSS2DObject(iconWrap);
+  icon.position.set(0, 1.3, 0);
+  group.add(icon);
+
+  scene.add(group);
+  _pins[pt.id] = { group, pinGroup, sphere, icon, svgEl, labelDiv, labelInner, squareMat, squareGroup, pt };
+}
+
 function renderPins(points) {
   Object.keys(_pins).forEach(removePin);
-  points.forEach(pt => {
-    const { x, y, z } = pt.position3d;
+  points.forEach(pt => _addPinToScene(pt));
+}
 
-    const group = new THREE.Group();
-    group.position.set(x, y, z);
-
-    // ── Animated ground square — 4 thin boxes, always above ground plane ─
-    const sq = 0.455, lineW = 0.12, sqH = 0.01;
-    const squareMat = new THREE.MeshBasicMaterial({
-      color: 0x00b140, transparent: true, opacity: 0.85, depthTest: false,
-    });
-    const squareGroup = new THREE.Group();
-    for (const [bx, bz, bw, bd] of [
-      [0,   -sq, sq * 2 + lineW, lineW],   // front (full width, covers corners)
-      [0,    sq, sq * 2 + lineW, lineW],   // back
-      [-sq,   0, lineW, sq * 2 - lineW],   // left (inner only)
-      [ sq,   0, lineW, sq * 2 - lineW],   // right
-    ]) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(bw, sqH, bd), squareMat);
-      m.position.set(bx, 0.05, bz);
-      m.renderOrder = 999;
-      squareGroup.add(m);
-    }
-    group.add(squareGroup);
-    _pinAnimatables.push({ squareGroup, squareMat });
-
-    // ── Pin icon + label — single CSS2DObject so they move as one unit ────
-    // Anchor at y=1.3 (pin tip). SVG extends 40px up; label floats above SVG.
-    const pinGroup = new THREE.Group();
-    group.add(pinGroup);
-
-    // Invisible sphere — raycast hit target only
-    const sphere = new THREE.Mesh(
-      new THREE.SphereGeometry(0.2, 8, 6),
-      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
-    );
-    sphere.position.y = 1.3;
-    pinGroup.add(sphere);
-
-    // Wrapper: 0×0 anchor div; CSS2DRenderer translates it to screen position
-    const iconWrap = document.createElement('div');
-    iconWrap.style.cssText = 'width:0;height:0;pointer-events:none;';
-
-    // SVG pin icon — tip aligns with anchor point
-    const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svgEl.setAttribute('width', '28');
-    svgEl.setAttribute('height', '40');
-    svgEl.setAttribute('viewBox', '0 0 28 40');
-    svgEl.style.cssText = 'position:absolute;left:-14px;top:-40px;pointer-events:none;z-index:100;overflow:visible;transform-origin:50% 100%;';
-    const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    pathEl.setAttribute('fill-rule', 'evenodd');
-    pathEl.setAttribute('d', 'M14,1 C7.4,1 2,6.4 2,13 C2,23 14,39 14,39 C14,39 26,23 26,13 C26,6.4 20.6,1 14,1 Z M14,8 a5,5 0 1,0 0.001,0 Z');
-    pathEl.setAttribute('fill', 'rgba(220,30,30,0.85)');
-    svgEl.appendChild(pathEl);
-    iconWrap.appendChild(svgEl);
-
-    // Label — fixed pixel offset above the SVG, centered on anchor
-    // Outer div handles position only; inner span is the scale target (same
-    // pattern as building labels) so _allScaleEls doesn't clobber translateX.
-    const labelDiv = document.createElement('div');
-    labelDiv.style.cssText = `
-      position:absolute;left:50%;transform:translateX(-50%);bottom:44px;
-      pointer-events:auto;cursor:pointer;z-index:100;
-    `;
-    const labelInner = document.createElement('span');
-    labelInner.style.cssText = `
-      display:inline-block;
-      background:rgba(0,177,64,0.80);backdrop-filter:blur(6px);
-      color:#ffffff;font:600 18px 'DM Sans',sans-serif;
-      padding:4px 8px;border-radius:6px;
-      white-space:nowrap;transform-origin:50% 100%;
-    `;
-    labelInner.textContent = pt.label;
-    labelDiv.appendChild(labelInner);
-    labelDiv.addEventListener('pointerup', e => {
-      e.preventDefault();
-      e.stopPropagation();
-      selectPoint(pt);
-    });
-    iconWrap.appendChild(labelDiv);
-    _allScaleEls.push(labelInner);
-
-    const icon = new CSS2DObject(iconWrap);
-    icon.position.set(0, 1.3, 0);
-    group.add(icon);
-
-    scene.add(group);
-    _pins[pt.id] = { group, pinGroup, sphere, icon, svgEl, labelDiv, labelInner, squareMat, squareGroup, pt };
-  });
+function upsertPin(pt) {
+  if (_pins[pt.id]) removePin(pt.id);
+  _addPinToScene(pt);
 }
 
 function updatePinHighlight(selectedId) {
   _selectedId = selectedId;
   Object.entries(_pins).forEach(([id, pin]) => {
     const selected = id === selectedId;
-    pin.squareMat.color.setHex(selected ? 0xffcc00 : 0x00b140);
+    const baseColor = pin.pt.scope === 'personal' ? 0x4F6AF5 : 0x00b140;
+    pin.squareMat.color.setHex(selected ? 0xffcc00 : baseColor);
   });
   document.querySelectorAll('.point-item[data-pt-id]').forEach(el => {
     el.classList.toggle('selected', el.dataset.ptId === selectedId);
@@ -2299,7 +2317,7 @@ async function boot() {
   }, 700);
 
   // Expose API for admin3d.js and dispatch ready event
-  window._v3d = { renderer, camera, controls, _raycaster, _pickGround, renderPins, removePin, updatePinHighlight, latlngToScene, pins: _pins };
+  window._v3d = { renderer, camera, controls, _raycaster, _pickGround, renderPins, removePin, upsertPin, updatePinHighlight, latlngToScene, pins: _pins };
   window.dispatchEvent(new CustomEvent('viewer3d:ready'));
 
   // viewer3d.html: load pins/contacts

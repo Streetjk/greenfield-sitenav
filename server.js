@@ -9,9 +9,12 @@ const http = require('http');
 const fs   = require('fs');
 const path = require('path');
 
-const ROOT    = __dirname;
-const DATA    = path.join(ROOT, 'data');
-const PORT    = parseInt(process.env.PORT || process.argv[2] || '50000', 10);
+const ROOT      = __dirname;
+const SITE      = process.env.SITE || 'landcros';
+const SITE_DIR  = path.join(ROOT, 'sites', SITE);
+const DATA      = path.join(SITE_DIR, 'data');
+const SHARED_ASSETS = path.join(ROOT, 'assets');
+const PORT      = parseInt(process.env.PORT || process.argv[2] || '50000', 10);
 
 const VISITS_FILE = path.join(DATA, 'visits.json');
 function _readVisits() {
@@ -91,13 +94,21 @@ const server = http.createServer((req, res) => {
     req.on('end', () => {
       try {
         const { path: relPath, data } = JSON.parse(body);
-        const target = path.resolve(ROOT, relPath);
+        // Client sends "./data/foo.json" — remap to site data dir, reject anything else
+        const stripped = relPath.replace(/^\.?\//, '');
+        if (!stripped.startsWith('data/') && stripped !== 'data') {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Write outside ./data/ forbidden' }));
+        }
+        const filename = stripped.slice('data/'.length);
+        const target = path.join(DATA, filename);
+        // Double-check no traversal
         if (!target.startsWith(DATA + path.sep) && target !== DATA) {
           res.writeHead(403, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ error: 'Write outside ./data/ forbidden' }));
         }
         fs.writeFileSync(target, JSON.stringify(data, null, 2), 'utf8');
-        console.log(`[write] ${relPath}`);
+        console.log(`[write] ${SITE}/${stripped}`);
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({ ok: true }));
       } catch (e) {
@@ -113,7 +124,20 @@ const server = http.createServer((req, res) => {
     res.writeHead(405); return res.end();
   }
 
-  let filePath = path.join(ROOT, pathname === '/' ? '/index.html' : pathname);
+  // Resolve file path — site-specific data/assets take priority over engine root
+  let filePath;
+  if (pathname.startsWith('/data/')) {
+    filePath = path.join(SITE_DIR, pathname);
+  } else if (pathname.startsWith('/assets/')) {
+    const siteAsset = path.join(SITE_DIR, pathname);
+    filePath = fs.existsSync(siteAsset) ? siteAsset : path.join(ROOT, pathname);
+  } else {
+    // Engine files (HTML, JS, CSS) — also check site root for branding files (logo.png, etc.)
+    const enginePath = path.join(ROOT, pathname === '/' ? '/index.html' : pathname);
+    const sitePath   = path.join(SITE_DIR, pathname.replace(/^\//, ''));
+    filePath = fs.existsSync(enginePath) ? enginePath : sitePath;
+  }
+
   // Prevent path traversal
   if (!filePath.startsWith(ROOT)) { res.writeHead(403); return res.end(); }
 

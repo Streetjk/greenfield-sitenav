@@ -1,9 +1,13 @@
 services:
+  # Landcros Forrestdale — Node.js web service (server.js handles SITE routing)
   - type: web
-    name: greenfield-sitenav
-    runtime: static
-    buildCommand: ""
-    staticPublishPath: .
+    name: landcros-forrestdale
+    runtime: node
+    buildCommand: echo ok
+    startCommand: node server.js
+    envVars:
+      - key: SITE
+        value: landcros
     headers:
       - path: /*
         name: Cross-Origin-Opener-Policy
@@ -11,4 +15,17 @@ services:
       - path: /*
         name: Cross-Origin-Embedder-Policy
         value: credentialless
-    # deploy trigger 2026-05-24
+
+  # Brown Greenfields — static site built via build.sh
+  - type: web
+    name: Brown-greenfields
+    runtime: static
+    buildCommand: bash build.sh greenfields
+    staticPublishPath: dist-greenfields
+    headers:
+      - path: /*
+        name: Cross-Origin-Opener-Policy
+        value: same-origin
+      - path: /*
+        name: Cross-Origin-Embedder-Policy
+        value: credentialless
