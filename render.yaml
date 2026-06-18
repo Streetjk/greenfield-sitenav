@@ -8,6 +8,8 @@ services:
     envVars:
       - key: SITE
         value: landcros
+      - key: GITHUB_PAT
+        sync: false   # set manually in Render dashboard — never commit the token
     headers:
       - path: /*
         name: Cross-Origin-Opener-Policy

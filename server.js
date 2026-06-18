@@ -5,9 +5,10 @@
  *
  * For SharePoint/cloud: flip USE_SHAREPOINT=true in db.js and retire this file.
  */
-const http = require('http');
-const fs   = require('fs');
-const path = require('path');
+const http  = require('http');
+const fs    = require('fs');
+const path  = require('path');
+const { exec } = require('child_process');
 
 const ROOT      = __dirname;
 const SITE      = process.env.SITE || 'landcros';
@@ -22,6 +23,35 @@ function _readVisits() {
   catch { return { total: 0, firstVisit: null, lastVisit: null, points: {} }; }
 }
 function _writeVisits(v) { fs.writeFileSync(VISITS_FILE, JSON.stringify(v, null, 2), 'utf8'); }
+
+// ── Auto-commit data changes to GitHub ────────────────────────────────────
+// Requires GITHUB_PAT env var. Runs async — write response is not delayed.
+// Commits are tagged [skip render] so Render ignores them (set "Ignored Build
+// Commands" filter in the Render dashboard: commit message contains [skip render]).
+let _gitPushPending = false;
+function _gitCommitPush(relPath) {
+  const pat = process.env.GITHUB_PAT;
+  if (!pat) return; // local dev — no PAT, skip silently
+  if (_gitPushPending) return; // coalesce rapid saves into one push
+  _gitPushPending = true;
+  setTimeout(() => {
+    _gitPushPending = false;
+    const remote = `https://x-access-token:${pat}@github.com/Streetjk/greenfield-sitenav.git`;
+    const msg = `auto: update ${SITE}/${relPath} [skip render]`;
+    const cmd = [
+      `git -C "${ROOT}" config user.email "sitenav-bot@render.com"`,
+      `git -C "${ROOT}" config user.name "SiteNav Bot"`,
+      `git -C "${ROOT}" remote set-url origin "${remote}"`,
+      `git -C "${ROOT}" add -A -- "${path.join('sites', SITE, 'data')}"`,
+      `git -C "${ROOT}" diff --cached --quiet || git -C "${ROOT}" commit -m "${msg}"`,
+      `git -C "${ROOT}" push origin HEAD`,
+    ].join(' && ');
+    exec(cmd, (err, _, stderr) => {
+      if (err) console.error('[git-push] failed:', stderr?.trim());
+      else console.log('[git-push] pushed:', msg);
+    });
+  }, 2000); // 2s debounce — coalesces burst saves (e.g. save pin + upload photo)
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -110,6 +140,7 @@ const server = http.createServer((req, res) => {
         fs.mkdirSync(path.dirname(target), { recursive: true });
         fs.writeFileSync(target, JSON.stringify(data, null, 2), 'utf8');
         console.log(`[write] ${SITE}/${stripped}`);
+        _gitCommitPush(stripped);
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({ ok: true }));
       } catch (e) {
