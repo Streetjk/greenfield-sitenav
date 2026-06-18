@@ -375,6 +375,17 @@ function renderDrawerBody() {
       <label class="form-label">Notes (optional)</label>
       <textarea class="form-input" id="field-notes">${_esc(pt.notes ?? '')}</textarea>
     </div>
+    <div class="form-group full">
+      <label class="form-label">Photo</label>
+      <div id="photo-preview" style="margin-bottom:8px"></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <label class="btn-secondary" style="cursor:pointer;padding:7px 14px;font-size:12px">
+          Upload photo
+          <input type="file" accept="image/*" style="display:none" onchange="window._adminUploadPhoto(event)">
+        </label>
+        <button class="btn-secondary" id="photo-remove-btn" style="display:none;font-size:12px;padding:7px 14px" onclick="window._adminRemovePhoto()">Remove</button>
+      </div>
+    </div>
     <div class="full" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
       <button class="btn-primary" style="width:auto;padding:9px 18px" onclick="window._adminSave()">Save pin</button>
       <div style="display:flex;gap:8px;flex:1;min-width:180px">${actionButtons}</div>
@@ -386,6 +397,11 @@ function renderDrawerBody() {
     window._adminAddContact(e.target.value);
     e.target.value = '';
   });
+
+  // Load existing photo preview if available
+  fetch(`./data/photos/${pt.id}.json`).then(r => r.ok ? r.json() : null).then(d => {
+    if (d?.data) _showPhotoPreview(d.data);
+  }).catch(() => {});
 }
 
 window._adminSetType  = type  => { _editingType  = type;  };
@@ -508,6 +524,51 @@ window._adminCopyLink = () => {
   const url = `${location.origin}/viewer3d.html?id=${_editingPoint.id}`;
   navigator.clipboard.writeText(url).catch(() => {});
   showToast('Link copied!');
+};
+
+// ── Photo upload ───────────────────────────────────────────────────────────────
+
+function _showPhotoPreview(dataUrl) {
+  const prev = document.getElementById('photo-preview');
+  const removeBtn = document.getElementById('photo-remove-btn');
+  if (!prev) return;
+  prev.innerHTML = `<img src="${dataUrl}" style="width:100%;max-height:160px;object-fit:cover;border-radius:8px;display:block">`;
+  if (removeBtn) removeBtn.style.display = '';
+}
+
+window._adminUploadPhoto = async (e) => {
+  const file = e.target.files[0];
+  if (!file || !_editingPoint) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const dataUrl = reader.result;
+    _showPhotoPreview(dataUrl);
+    try {
+      await fetch('/api/write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: `./data/photos/${_editingPoint.id}.json`, data: { data: dataUrl } }),
+      });
+      showToast('Photo saved');
+    } catch { showToast('Photo save failed'); }
+  };
+  reader.readAsDataURL(file);
+};
+
+window._adminRemovePhoto = async () => {
+  if (!_editingPoint) return;
+  try {
+    await fetch('/api/write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: `./data/photos/${_editingPoint.id}.json`, data: {} }),
+    });
+    const prev = document.getElementById('photo-preview');
+    if (prev) prev.innerHTML = '';
+    const btn = document.getElementById('photo-remove-btn');
+    if (btn) btn.style.display = 'none';
+    showToast('Photo removed');
+  } catch { showToast('Remove failed'); }
 };
 
 window._adminSharePersonal = () => {

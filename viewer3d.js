@@ -617,7 +617,8 @@ function _addPinToScene(pt) {
   _pinAnimatables.push({ squareGroup, squareMat });
 
   // ── Pin icon + label — single CSS2DObject so they move as one unit ────
-  // Anchor at y=1.3 (pin tip). SVG extends 40px up; label floats above SVG.
+  // Anchor at ground level (y=0.05, matching the square) so the pin tip
+  // projects to the same screen position as the floor zone square.
   const pinGroup = new THREE.Group();
   group.add(pinGroup);
 
@@ -674,7 +675,7 @@ function _addPinToScene(pt) {
   _allScaleEls.push(labelInner);
 
   const icon = new CSS2DObject(iconWrap);
-  icon.position.set(0, 1.3, 0);
+  icon.position.set(0, 0.05, 0);
   group.add(icon);
 
   scene.add(group);
@@ -795,6 +796,17 @@ async function selectPoint(pt) {
     });
   }
 
+  // ── Photo ─────────────────────────────────────────────────────────────
+  const photoSec = document.getElementById('detail-photo-section');
+  const photoImg = document.getElementById('detail-photo');
+  photoSec.style.display = 'none';
+  fetch(`./data/photos/${pt.id}.json`).then(r => r.ok ? r.json() : null).then(d => {
+    if (d?.data) { photoImg.src = d.data; photoSec.style.display = 'block'; }
+  }).catch(() => {});
+
+  // ── Copy-link button stores current point id ───────────────────────────
+  window._detailPointId = pt.id;
+
   document.getElementById('point-list').style.display = 'none';
   document.getElementById('point-detail').classList.add('visible');
 
@@ -910,6 +922,16 @@ window.showPointList = function() {
 };
 
 window.startNav = function() {};
+
+window._copyDetailLink = function() {
+  const id = window._detailPointId;
+  if (!id) return;
+  const url = `${location.origin}${location.pathname}?id=${id}`;
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = document.getElementById('detail-copy-link');
+    if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy shared link'; }, 1800); }
+  }).catch(() => {});
+};
 
 // ── Point list panel ───────────────────────────────────────────────────────
 

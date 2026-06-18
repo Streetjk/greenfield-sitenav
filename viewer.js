@@ -68,6 +68,14 @@ async function boot() {
     `;
   }).join('') || '<p style="color:var(--text-secondary);font-size:13px">No contacts assigned.</p>';
 
+  // Photo
+  fetch(`./data/photos/${point.id}.json`).then(r => r.ok ? r.json() : null).then(d => {
+    if (d?.data) {
+      document.getElementById('point-photo').src = d.data;
+      document.getElementById('point-photo-section').style.display = 'block';
+    }
+  }).catch(() => {});
+
   if (point.routeWaypoints?.length > 1) {
     document.getElementById('btn-nav').style.display = 'flex';
   }

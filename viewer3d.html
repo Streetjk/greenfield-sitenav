@@ -860,9 +860,17 @@
         <div class="detail-label" id="detail-label"></div>
         <div class="detail-notes" id="detail-notes"></div>
       </div>
+      <div id="detail-photo-section" style="display:none;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.05)">
+        <img id="detail-photo" src="" alt="" style="width:100%;border-radius:8px;object-fit:cover;max-height:180px;display:block">
+      </div>
       <div class="detail-section">
         <div class="detail-section-title">Contacts</div>
         <div id="detail-contacts"></div>
+      </div>
+      <div style="padding:10px 16px">
+        <button id="detail-copy-link" onclick="window._copyDetailLink()" style="width:100%;padding:8px 12px;background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.3);border-radius:8px;color:#60a5fa;font:600 12px 'DM Sans',sans-serif;cursor:pointer;letter-spacing:0.02em">
+          Copy shared link
+        </button>
       </div>
     </div>
   </aside>

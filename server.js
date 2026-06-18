@@ -107,6 +107,7 @@ const server = http.createServer((req, res) => {
           res.writeHead(403, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ error: 'Write outside ./data/ forbidden' }));
         }
+        fs.mkdirSync(path.dirname(target), { recursive: true });
         fs.writeFileSync(target, JSON.stringify(data, null, 2), 'utf8');
         console.log(`[write] ${SITE}/${stripped}`);
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
