@@ -655,121 +655,116 @@
       .load-logo-mark img { height: 44px; max-width: 160px; }
       .load-bar { width: 200px; }
     }
+    /* ── Mobile bottom sheet (≤767px) ── */
     @media (max-width: 767px) {
-      #app { position: relative; flex-direction: row !important; }
-      #canvas-wrap { width: 100%; height: 100%; position: absolute; inset: 0; flex: none; min-height: 0; }
+      /* Canvas fills full screen behind everything */
+      .v3d #canvas-wrap {
+        position: fixed !important;
+        inset: 0 !important;
+        width: 100% !important; height: 100% !important;
+        z-index: 1;
+      }
 
-      .panel-handle { display: block; height: 3px !important; margin: 7px auto 0 !important; }
+      /* Panel handle */
+      .v3d .panel-handle { display: block; height: 3px !important; margin: 8px auto 0 !important; }
 
-      /* Peek-state CTA: icon only, no text — fits the 36px peek zone */
-      .sheet-peek-cta {
+      /* Peek CTA */
+      .v3d .sheet-peek-cta {
         display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 4px 24px 9px;
+        align-items: center; justify-content: center;
+        padding: 4px 24px 10px;
         cursor: pointer;
         color: rgba(238,240,244,0.5);
-        font-size: 0;          /* hides "Browse locations" text */
+        font-size: 0;
         transition: color 0.15s;
         flex-shrink: 0;
       }
-      .sheet-peek-cta:hover { color: rgba(238,240,244,0.9); }
-      .sheet-peek-cta svg { flex-shrink: 0; }
+      .v3d .sheet-peek-cta svg { flex-shrink: 0; }
+      .v3d #side-panel.sheet-mid  .sheet-peek-cta,
+      .v3d #side-panel.sheet-full .sheet-peek-cta { display: none; }
 
-      /* Hide CTA when sheet is open */
-      #side-panel.sheet-mid  .sheet-peek-cta,
-      #side-panel.sheet-full .sheet-peek-cta { display: none; }
+      /* Hide header/content in peek state */
+      .v3d #side-panel:not(.sheet-mid):not(.sheet-full) #panel-header { display: none !important; }
+      .v3d #side-panel:not(.sheet-mid):not(.sheet-full) #point-list,
+      .v3d #side-panel:not(.sheet-mid):not(.sheet-full) #point-detail { visibility: hidden; }
 
-      /* Hide normal header in peek state */
-      #side-panel:not(.sheet-mid):not(.sheet-full) #panel-header { display: none !important; }
-      /* Hide point list / detail in peek state */
-      #side-panel:not(.sheet-mid):not(.sheet-full) #point-list,
-      #side-panel:not(.sheet-mid):not(.sheet-full) #point-detail { visibility: hidden; }
-
-      #side-panel {
-        position: absolute !important;
+      /* ── Side panel: fixed bottom sheet ── */
+      .v3d #side-panel {
+        position: fixed !important;
         bottom: 0 !important; left: 0 !important; right: 0 !important; top: auto !important;
         width: 100% !important;
         height: 85vh !important;
-        border-radius: 28px 28px 0 0 !important;
-        border-left: none !important;
+        border-radius: 20px 20px 0 0 !important;
+        border-left: none !important; border-bottom: none !important;
         border-top: 1px solid rgba(255,255,255,0.1) !important;
-        border-bottom: none !important;
         box-shadow: 0 -12px 40px rgba(0,0,0,0.6) !important;
-        background: rgba(12, 15, 22, 0.95) !important;
+        background: rgba(12,15,22,0.97) !important;
         backdrop-filter: blur(24px) saturate(160%) !important;
         -webkit-backdrop-filter: blur(24px) saturate(160%) !important;
-        /* default: peek state — show only 36px */
-        transform: translateY(calc(100% - 36px));
+        transform: translateY(calc(100% - 56px));
         transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
         will-change: transform;
         overflow: hidden;
         z-index: 30;
         order: unset !important;
+        display: flex;
+        flex-direction: column;
       }
-      /* Mid snap — ~22% visible */
-      #side-panel.sheet-mid  { transform: translateY(calc(100% - 22vh)); }
-      /* Full snap — fully open */
-      #side-panel.sheet-full { transform: translateY(0); }
+      .v3d #side-panel.sheet-mid  { transform: translateY(calc(100% - 22vh)); }
+      .v3d #side-panel.sheet-full { transform: translateY(0); }
 
-      #panel-header {
+      /* Panel header */
+      .v3d #panel-header {
         display: flex !important;
         align-items: center !important;
         padding: 10px 18px 8px !important;
         flex-shrink: 0;
         cursor: pointer;
+        justify-content: center !important;
+        position: relative;
       }
-      #panel-header { justify-content: center !important; position: relative; }
-      #panel-header-text { display: block !important; position: absolute; left: 18px; top: 50%; transform: translateY(-50%); }
-      #panel-header-text .panel-site { display: none !important; }
-      #panel-toggle { display: block; margin-left: 0; }
-      #panel-tab { display: none !important; }
-      #side-panel.sheet-mid #panel-toggle,
-      #side-panel.sheet-full #panel-toggle { transform: rotate(180deg); }
+      .v3d #panel-header-text { display: block !important; position: absolute; left: 18px; top: 50%; transform: translateY(-50%); }
+      .v3d #panel-header-text .panel-site { display: none !important; }
+      .v3d #panel-toggle { display: block; margin-left: 0; }
+      .v3d #panel-tab { display: none !important; }
+      .v3d #side-panel.sheet-mid  #panel-toggle,
+      .v3d #side-panel.sheet-full #panel-toggle { transform: rotate(180deg); }
 
-      #cam-presets {
+      /* Cam presets: fixed, JS sets bottom dynamically */
+      .v3d #cam-presets {
+        position: fixed !important;
         top: auto !important;
-        bottom: 44px;
+        bottom: 64px !important;
         left: 16px !important;
+        right: auto !important;
         flex-direction: row !important;
         gap: 10px;
-        transition: opacity 0.4s ease, bottom 420ms cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+        z-index: 25;
+        transition: bottom 420ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.4s ease !important;
       }
-      .cam-preset-btn {
-        width: 40px;
-        height: 40px;
-      }
-      .cam-preset-btn .icon-wrap {
-        width: 40px;
-        height: 40px;
-      }
-      .speed-limit-sign .icon-wrap img { width: 40px !important; height: 40px !important; }
-      .cam-preset-btn .label-wrap {
-        display: none;
-      }
-      #nav-progress { bottom: calc(22vh + 12px); }
+      .v3d .cam-preset-btn { width: 40px !important; height: 40px !important; }
+      .v3d .cam-preset-btn .icon-wrap { width: 40px !important; height: 40px !important; }
+      .v3d .speed-limit-sign .icon-wrap img { width: 40px !important; height: 40px !important; }
+      .v3d .cam-preset-btn .label-wrap { display: none !important; }
 
-      /* Brand: top-right, fixed over canvas */
-      #site-brand {
+      .v3d #nav-progress { bottom: calc(22vh + 12px); }
+
+      /* Brand: top-right fixed */
+      .v3d #site-brand {
         position: fixed !important;
         top: 16px !important; right: 16px !important;
         display: flex !important;
       }
-      #site-brand img { height: 28px !important; }
-      #site-address { font-size: 11px !important; text-align: center !important; }
-    }
+      .v3d #site-brand img { height: 28px !important; }
+      .v3d #site-address { font-size: 11px !important; text-align: center !important; }
 
-    /* ── Undo global style.css panel overrides for this page ── */
-    @media (max-width: 640px) {
-      #app { flex-direction: row !important; }
-      #side-panel { order: unset !important; }
-      /* style.css hides #site-brand and #site-address by ID — restore both */
-      #site-brand  { display: flex !important; }
-      #site-address { display: block !important; }
+      /* Override style.css flex-column layout */
+      .v3d #app { flex-direction: row !important; }
+      .v3d #site-brand, .v3d #site-address { display: flex !important; }
     }
   </style>
 </head>
-<body>
+<body class="v3d">
 <div id="app">
 
   <div id="canvas-wrap">
@@ -880,15 +875,21 @@
 <script>
   const MOBILE_BP = 767;
 
-  // Mobile bottom sheet: peek ↔ mid
+  // Mobile bottom sheet: peek ↔ mid — cam-presets bottom tracks sheet state
   function _updateCamPresetsBottom() {
     if (window.innerWidth > MOBILE_BP) return;
     const panel = document.getElementById('side-panel');
     const presets = document.getElementById('cam-presets');
-    if (!panel || !presets) return;
-    const isOpen = panel.classList.contains('sheet-mid') || panel.classList.contains('sheet-full');
-    presets.style.bottom = isOpen ? 'calc(22vh + 8px)' : '44px';
+    if (!presets) return;
+    if (panel?.classList.contains('sheet-full')) {
+      presets.style.bottom = 'calc(85vh + 12px)';
+    } else if (panel?.classList.contains('sheet-mid')) {
+      presets.style.bottom = 'calc(22vh + 12px)';
+    } else {
+      presets.style.bottom = '64px';
+    }
   }
+  window._updateCamPresetsBottom = _updateCamPresetsBottom;
   window.togglePanel = function() {
     if (window.innerWidth > MOBILE_BP) return;
     const panel = document.getElementById('side-panel');

@@ -919,6 +919,7 @@ window.showPointList = function() {
   document.getElementById('app')?.classList.remove('panel-open');
   window._updateCamPresetsBottom?.();
   history.pushState(null, '', location.pathname);
+
 };
 
 window.startNav = function() {};
