@@ -44,6 +44,7 @@ function _gitCommitPush(relPath) {
       `git -C "${ROOT}" remote set-url origin "${remote}"`,
       `git -C "${ROOT}" add -A -- "${path.join('sites', SITE, 'data')}"`,
       `git -C "${ROOT}" diff --cached --quiet || git -C "${ROOT}" commit -m "${msg}"`,
+      `git -C "${ROOT}" pull --rebase origin HEAD`,
       `git -C "${ROOT}" push origin HEAD`,
     ].join(' && ');
     exec(cmd, (err, _, stderr) => {
